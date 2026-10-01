@@ -46,10 +46,6 @@ struct AuthView: View {
                 .disabled(isAuthenticating)
                 .padding(.top, AppSpacing.large)
 
-                TermsDisclaimer(color: .secondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, AppSpacing.medium)
-
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, AppSpacing.xLarge)
