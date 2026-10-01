@@ -83,7 +83,7 @@ struct ContentView: View {
                 AppGradients.welcome
                     .ignoresSafeArea()
 
-                StickerTitle(width: geometry.size.width.isFinite ? max(0, min(geometry.size.width - 48, 390)) : 0)
+                welcomeTitle
                     .position(x: geometry.size.width / 2, y: geometry.size.height * 0.48)
 
                 Button(action: start) {
@@ -102,6 +102,16 @@ struct ContentView: View {
             }
         }
         .toolbar(.hidden, for: .navigationBar)
+    }
+
+    private var welcomeTitle: some View {
+        Text("Who Listens?")
+            .font(AppTypography.display)
+            .foregroundStyle(AppColors.textOnBrand)
+            .multilineTextAlignment(.center)
+            .minimumScaleFactor(0.7)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, AppSpacing.large)
     }
 
 }
