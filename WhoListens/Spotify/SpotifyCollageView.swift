@@ -24,21 +24,21 @@ struct SpotifyCollageView: View {
                     .blur(radius: 38 * scale)
                     .position(x: centerX, y: centerY + 35 * scale)
 
-                coverCard(colors: [.cyan, .blue], size: 76 * scale, artworkImage: artworkImage(at: 0))
+                coverCard(colors: [.cyan, .blue], size: 88 * scale, artworkImage: artworkImage(at: 0))
                     .blur(radius: 12 * scale)
                     .position(x: centerX + 135 * scale, y: centerY - 78 * scale)
 
-                coverCard(colors: [.black, .gray], size: 74 * scale, artworkImage: artworkImage(at: 1))
+                coverCard(colors: [.black, .gray], size: 85 * scale, artworkImage: artworkImage(at: 1))
                     .blur(radius: 13 * scale)
                     .position(x: centerX + 151 * scale, y: centerY + 72 * scale)
 
-                coverCard(colors: [.green, .teal], size: 75 * scale, artworkImage: artworkImage(at: 2))
+                coverCard(colors: [.green, .teal], size: 86 * scale, artworkImage: artworkImage(at: 2))
                     .position(x: centerX - 104 * scale, y: centerY - 112 * scale)
 
-                coverCard(colors: [.blue, .indigo], size: 52 * scale, artworkImage: artworkImage(at: 3))
+                coverCard(colors: [.blue, .indigo], size: 60 * scale, artworkImage: artworkImage(at: 3))
                     .position(x: centerX - 71 * scale, y: centerY - 20 * scale)
 
-                coverCard(colors: [.black, Color(white: 0.22)], size: 77 * scale, artworkImage: artworkImage(at: 4))
+                coverCard(colors: [.black, Color(white: 0.22)], size: 89 * scale, artworkImage: artworkImage(at: 4))
                     .position(x: centerX - 148 * scale, y: centerY + 8 * scale)
 
                 RoundedRectangle(cornerRadius: 27 * scale)
