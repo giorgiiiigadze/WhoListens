@@ -10,8 +10,6 @@ struct ContentView: View {
     @State private var sessionState: SessionState = .loading
     @State private var artworkReady = false
     @State private var hasStarted = false
-    @State private var showingOnboardingPreview = false
-    @State private var previewHasStarted = false
     @AppStorage("hasAuthenticatedBefore") private var hasAuthenticatedBefore = false
     @AppStorage("displayName") private var savedName = ""
     @AppStorage("pendingBirthMonth") private var pendingBirthMonth = 0
@@ -26,10 +24,7 @@ struct ContentView: View {
                     .overlay { ProgressView().tint(.white) }
             case .signedIn:
                 NavigationStack {
-                    HomeView(onShowOnboarding: {
-                        previewHasStarted = false
-                        showingOnboardingPreview = true
-                    })
+                    HomeView()
                 }
             case .signedOut:
                 if artworkReady {
@@ -50,29 +45,6 @@ struct ContentView: View {
                         .ignoresSafeArea()
                         .overlay { ProgressView().tint(.white) }
                 }
-            }
-        }
-        .fullScreenCover(isPresented: $showingOnboardingPreview) {
-            NavigationStack {
-                welcomePage { previewHasStarted = true }
-                    .navigationDestination(isPresented: $previewHasStarted) {
-                        AgeConfirmationView(isPreview: true)
-                    }
-            }
-            .overlay(alignment: .topTrailing) {
-                Button {
-                    showingOnboardingPreview = false
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.black)
-                        .frame(width: 40, height: 40)
-                        .background(.white, in: Circle())
-                        .overlay { Circle().strokeBorder(.black.opacity(0.1)) }
-                }
-                .accessibilityLabel("Close onboarding preview")
-                .padding(.top, AppSpacing.small)
-                .padding(.trailing, AppSpacing.xLarge)
             }
         }
         .task {

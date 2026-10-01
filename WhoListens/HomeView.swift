@@ -29,7 +29,7 @@ private struct NewProfile: Encodable {
 }
 
 struct HomeView: View {
-    var onShowOnboarding: () -> Void = {}
+    @AppStorage("hasAuthenticatedBefore") private var hasAuthenticatedBefore = false
     @AppStorage("displayName") private var savedName = ""
     @AppStorage("pendingBirthMonth") private var pendingBirthMonth = 0
     @AppStorage("pendingBirthYear") private var pendingBirthYear = 0
@@ -92,7 +92,7 @@ struct HomeView: View {
 
                 #if DEBUG
                 Button("Show onboarding") {
-                    onShowOnboarding()
+                    Task { await logOut(showOnboarding: true) }
                 }
                 .font(.system(size: 16, weight: .semibold))
                 .frame(maxWidth: .infinity)
@@ -102,6 +102,7 @@ struct HomeView: View {
                     RoundedRectangle(cornerRadius: AppCornerRadius.medium)
                         .strokeBorder(.black.opacity(0.1))
                 }
+                .disabled(isSigningOut)
                 #endif
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -232,10 +233,14 @@ struct HomeView: View {
     }
 
     @MainActor
-    private func logOut() async {
+    private func logOut(showOnboarding: Bool = false) async {
         guard !isSigningOut else { return }
         isSigningOut = true
         defer { isSigningOut = false }
+
+        if showOnboarding {
+            hasAuthenticatedBefore = false
+        }
 
         // Supabase clears the local session and emits .signedOut before its
         // server request finishes. The root view handles that event and clears

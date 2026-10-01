@@ -3,7 +3,6 @@ import AuthenticationServices
 
 struct AuthView: View {
     var onBack: (() -> Void)? = nil
-    var isPreview = false
     @State private var isAuthenticating = false
     @State private var authError: String?
 
@@ -38,7 +37,7 @@ struct AuthView: View {
                 .background(.black, in: Capsule())
             }
             .buttonStyle(.plain)
-            .disabled(isAuthenticating || isPreview)
+            .disabled(isAuthenticating)
 
             TermsDisclaimer(color: .secondary)
                 .padding(.top, AppSpacing.large)
