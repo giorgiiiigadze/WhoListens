@@ -6,7 +6,7 @@ struct SpotifyPublicArtworkService: Sendable {
         "4yP0hdKOZPNshxUOjY0cZj", // After Hours
         "0hvT3yIEysuuvkK73vgdcW", // GNX
         "7aJuG4TFXa2hmE4z1yxc3n", // HIT ME HARD AND SOFT
-        "151w1FgRZfnKZA9FEcg9Z3", // Midnights
+        "4AdZV63ycxFLF6Hcol0QnB", // Starboy
         "4aawyAB9vmqN3uQ7FjRGTy"  // Global Warming
     ]
 

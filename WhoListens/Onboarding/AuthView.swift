@@ -75,7 +75,7 @@ struct AuthView: View {
     private func signInWithSpotify() async {
         guard !isAuthenticating else { return }
         guard let redirectURL = URL(string: "com.giorgigiorgadze.wholistens://auth-callback") else {
-            authError = "The Spotify callback URL is invalid."
+            authError = "We couldn't start Spotify sign-in. Please try again."
             return
         }
         isAuthenticating = true
@@ -88,7 +88,7 @@ struct AuthView: View {
             )
         } catch {
             if (error as? ASWebAuthenticationSessionError)?.code != .canceledLogin {
-                authError = error.localizedDescription
+                authError = "We couldn't connect to Spotify. Please try again."
             }
         }
     }

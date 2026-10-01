@@ -10,6 +10,7 @@ struct ContentView: View {
     @State private var sessionState: SessionState = .loading
     @State private var artworkReady = false
     @State private var hasStarted = false
+    @AppStorage("hasAuthenticatedBefore") private var hasAuthenticatedBefore = false
     @AppStorage("displayName") private var savedName = ""
     @AppStorage("pendingBirthMonth") private var pendingBirthMonth = 0
     @AppStorage("pendingBirthYear") private var pendingBirthYear = 0
@@ -27,11 +28,17 @@ struct ContentView: View {
                 }
             case .signedOut:
                 if artworkReady {
-                    NavigationStack {
-                        welcomePage
-                            .navigationDestination(isPresented: $hasStarted) {
-                                AgeConfirmationView()
-                            }
+                    if hasAuthenticatedBefore {
+                        NavigationStack {
+                            AuthView()
+                        }
+                    } else {
+                        NavigationStack {
+                            welcomePage
+                                .navigationDestination(isPresented: $hasStarted) {
+                                    AgeConfirmationView()
+                                }
+                        }
                     }
                 } else {
                     AppGradients.welcome
@@ -53,10 +60,12 @@ struct ContentView: View {
                     hasStarted = false
                     sessionState = .signedOut
                 } else if let session, !session.isExpired {
+                    hasAuthenticatedBefore = true
                     sessionState = .signedIn
                 } else if event == .initialSession {
                     // A stored session may need a refresh before it can grant access.
                     if let refreshed = try? await supabase.auth.session, !refreshed.isExpired {
+                        hasAuthenticatedBefore = true
                         sessionState = .signedIn
                     } else {
                         sessionState = .signedOut
