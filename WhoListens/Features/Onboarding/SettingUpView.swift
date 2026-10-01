@@ -7,22 +7,22 @@ struct SettingUpView: View {
         VStack(spacing: 0) {
             Spacer()
 
-            SpotifyCollageView()
-                .frame(height: 330)
-                .accessibilityHidden(true)
+            VStack(spacing: -12) {
+                SpotifyCollageView()
+                    .frame(height: 330)
+                    .accessibilityHidden(true)
 
-            Spacer()
+                VStack(spacing: AppSpacing.small) {
+                    Text("Setting up everything")
+                        .font(.system(size: 26, weight: .bold))
+                        .foregroundStyle(AppColors.text)
 
-            VStack(spacing: AppSpacing.small) {
-                Text("Setting up everything")
-                    .font(.system(size: 26, weight: .bold))
-                    .foregroundStyle(AppColors.text)
-
-                Text("Getting things ready for you…")
-                    .font(.system(size: 17))
-                    .foregroundStyle(.secondary)
+                    Text("Getting things ready for you…")
+                        .font(.system(size: 17))
+                        .foregroundStyle(.secondary)
+                }
+                .multilineTextAlignment(.center)
             }
-            .multilineTextAlignment(.center)
 
             Spacer()
         }

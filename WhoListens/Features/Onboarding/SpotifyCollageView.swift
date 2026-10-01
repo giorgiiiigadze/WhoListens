@@ -13,7 +13,8 @@ struct SpotifyCollageView: View {
 
     private var placeholderCollage: some View {
         GeometryReader { geometry in
-            let scale = min(geometry.size.width / 330, 1)
+            let width = geometry.size.width.isFinite ? max(0, geometry.size.width) : 0
+            let scale = min(width / 330, 1)
             let centerX = geometry.size.width / 2
             let centerY = geometry.size.height / 2
 

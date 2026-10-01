@@ -23,7 +23,9 @@ struct ScatteredAlbumArtworkView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let scale = min(geometry.size.width / 390, geometry.size.height / 440, 1)
+            let width = geometry.size.width.isFinite ? max(0, geometry.size.width) : 0
+            let height = geometry.size.height.isFinite ? max(0, geometry.size.height) : 0
+            let scale = min(width / 390, height / 440, 1)
 
             ZStack {
                 ForEach(covers.indices, id: \.self) { index in

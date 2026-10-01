@@ -9,7 +9,9 @@ struct AuthView: View {
         GeometryReader { geometry in
             VStack(alignment: .leading, spacing: 0) {
                 ScatteredAlbumArtworkView()
-                    .frame(height: min(geometry.size.height * 0.47, 430))
+                    .frame(height: geometry.size.height.isFinite ? max(0, min(geometry.size.height * 0.47, 430)) : 0)
+
+                Spacer(minLength: AppSpacing.medium)
 
                 Text("Welcome to Who Listens?")
                     .font(.system(size: 29, weight: .bold))
@@ -45,8 +47,6 @@ struct AuthView: View {
                 .buttonStyle(.plain)
                 .disabled(isAuthenticating)
                 .padding(.top, AppSpacing.large)
-
-                Spacer(minLength: 0)
             }
             .padding(.horizontal, AppSpacing.xLarge)
             .padding(.bottom, AppSpacing.xLarge)

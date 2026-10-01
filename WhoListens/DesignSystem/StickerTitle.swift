@@ -6,10 +6,15 @@ struct StickerTitle: View {
 
     private let title = "WHO\nLISTENS?"
 
+    private var safeWidth: CGFloat {
+        width.isFinite ? max(0, width) : 0
+    }
+
     private var fontSize: CGFloat {
         let sampleFont = UIFont(name: "BowlbyOne-Regular", size: 50) ?? .systemFont(ofSize: 50, weight: .black)
         let longestLine = ("LISTENS?" as NSString).size(withAttributes: [.font: sampleFont]).width
-        return min(52, 50 * (width - 30) / longestLine)
+        guard longestLine > 0 else { return 1 }
+        return max(1, min(52, 50 * max(0, safeWidth - 30) / longestLine))
     }
 
     var body: some View {
@@ -18,7 +23,7 @@ struct StickerTitle: View {
             titleLayer(strokeColor: .black, strokeWidth: 24)
             titleLayer(strokeColor: nil, strokeWidth: 0)
         }
-        .frame(width: width, height: 170)
+        .frame(width: safeWidth, height: 170)
         .shadow(color: .black.opacity(0.18), radius: 6, y: 5)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Who Listens?")
@@ -31,7 +36,7 @@ struct StickerTitle: View {
             strokeColor: strokeColor,
             strokeWidth: strokeWidth
         )
-        .frame(width: width, height: 170)
+        .frame(width: safeWidth, height: 170)
     }
 }
 
