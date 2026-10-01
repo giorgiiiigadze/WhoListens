@@ -35,20 +35,28 @@ struct DisplayNameView: View {
 
             Spacer()
 
-            TextField("Your name", text: $name)
-                .textContentType(.nickname)
-                .textInputAutocapitalization(.words)
-                .autocorrectionDisabled()
-                .submitLabel(.done)
-                .focused($nameIsFocused)
-                .padding(AppSpacing.medium)
-                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: AppCornerRadius.medium))
-                .onChange(of: name) { _, newValue in
-                    if newValue.count > 20 {
-                        name = String(newValue.prefix(20))
+            HStack(spacing: AppSpacing.xSmall) {
+                Text("@")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(AppColors.text)
+                    .accessibilityHidden(true)
+
+                TextField("Your name", text: $name)
+                    .textContentType(.nickname)
+                    .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled()
+                    .submitLabel(.done)
+                    .focused($nameIsFocused)
+                    .accessibilityLabel("Username")
+                    .onChange(of: name) { _, newValue in
+                        if newValue.count > 20 {
+                            name = String(newValue.prefix(20))
+                        }
                     }
-                }
-                .onSubmit(continueToAuth)
+                    .onSubmit(continueToAuth)
+            }
+            .padding(AppSpacing.medium)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: AppCornerRadius.medium))
 
             Spacer()
 
