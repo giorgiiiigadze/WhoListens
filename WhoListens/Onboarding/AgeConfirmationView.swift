@@ -61,8 +61,6 @@ struct AgeConfirmationView: View {
             }
             .buttonStyle(.plain)
 
-            TermsDisclaimer(color: .secondary)
-                .padding(.top, AppSpacing.large)
         }
         .foregroundStyle(AppColors.text)
         .padding(.horizontal, AppSpacing.xLarge)
