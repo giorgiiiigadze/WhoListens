@@ -5,12 +5,14 @@ private struct Profile: Decodable {
     let displayName: String
     let birthMonth: Int
     let birthYear: Int
+    let avatarPath: String?
 
     enum CodingKeys: String, CodingKey {
         case id
         case displayName = "display_name"
         case birthMonth = "birth_month"
         case birthYear = "birth_year"
+        case avatarPath = "avatar_path"
     }
 }
 
@@ -35,6 +37,7 @@ struct HomeView: View {
     @AppStorage("pendingBirthYear") private var pendingBirthYear = 0
 
     @State private var profile: Profile?
+    @State private var avatarImage: UIImage?
     @State private var email: String?
     @State private var userID: UUID?
     @State private var isLoading = true
@@ -67,6 +70,15 @@ struct HomeView: View {
                 if isLoading {
                     ProgressView("Loading profile…")
                 } else if let profile {
+                    if let avatarImage {
+                        Image(uiImage: avatarImage)
+                            .resizable()
+                            .scaledToFill()
+                        .frame(width: 88, height: 88)
+                        .clipShape(Circle())
+                        .accessibilityLabel("Profile photo")
+                    }
+
                     VStack(spacing: 0) {
                         detailRow("Display name", value: profile.displayName)
                         Divider()
@@ -166,7 +178,7 @@ struct HomeView: View {
 
             let existing: Profile? = try await supabase
                 .from("profiles")
-                .select("id, display_name, birth_month, birth_year")
+                .select("id, display_name, birth_month, birth_year, avatar_path")
                 .eq("id", value: session.user.id.uuidString)
                 .maybeSingle()
                 .execute()
@@ -177,6 +189,10 @@ struct HomeView: View {
                 savedName = existing.displayName
                 pendingBirthMonth = 0
                 pendingBirthYear = 0
+                await uploadPendingPhoto(for: existing.id)
+                if let path = profile?.avatarPath {
+                    avatarImage = try? await ProfilePhotoService.download(path: path)
+                }
             } else {
                 draftName = savedName
                 if (1...12).contains(pendingBirthMonth), pendingBirthYear >= 1900, !savedName.isEmpty {
@@ -204,7 +220,7 @@ struct HomeView: View {
             let saved: Profile = try await supabase
                 .from("profiles")
                 .insert(newProfile)
-                .select("id, display_name, birth_month, birth_year")
+                .select("id, display_name, birth_month, birth_year, avatar_path")
                 .single()
                 .execute()
                 .value
@@ -213,8 +229,29 @@ struct HomeView: View {
             pendingBirthMonth = 0
             pendingBirthYear = 0
             errorMessage = nil
+            await uploadPendingPhoto(for: saved.id)
         } catch {
             errorMessage = "Could not save your profile: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func uploadPendingPhoto(for userID: UUID) async {
+        do {
+            if let path = try await ProfilePhotoService.uploadPending(for: userID) {
+                avatarImage = try? await ProfilePhotoService.download(path: path)
+                if let profile {
+                    self.profile = Profile(
+                        id: profile.id,
+                        displayName: profile.displayName,
+                        birthMonth: profile.birthMonth,
+                        birthYear: profile.birthYear,
+                        avatarPath: path
+                    )
+                }
+            }
+        } catch {
+            errorMessage = "Your profile photo couldn't be saved. It will retry next time."
         }
     }
 
@@ -241,6 +278,8 @@ struct HomeView: View {
         if showOnboarding {
             hasAuthenticatedBefore = false
         }
+
+        PendingProfilePhoto.clear()
 
         // Supabase clears the local session and emits .signedOut before its
         // server request finishes. The root view handles that event and clears

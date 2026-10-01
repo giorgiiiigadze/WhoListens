@@ -5,6 +5,7 @@ struct DisplayNameView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("displayName") private var savedName = ""
     @State private var name = ""
+    @State private var showPhoto = false
     @State private var showSetup = false
     @State private var showAuth = false
     @FocusState private var nameIsFocused: Bool
@@ -23,6 +24,12 @@ struct DisplayNameView: View {
                     showAuth = true
                 }
                     .transition(OnboardingMotion.transition(reduceMotion: reduceMotion))
+            } else if showPhoto {
+                ProfilePhotoView(
+                    onBack: { showPhoto = false },
+                    onContinue: { showSetup = true }
+                )
+                .transition(OnboardingMotion.transition(reduceMotion: reduceMotion))
             } else {
                 nameContent
                     .transition(OnboardingMotion.transition(reduceMotion: reduceMotion))
@@ -30,6 +37,7 @@ struct DisplayNameView: View {
         }
         .animation(OnboardingMotion.animation(reduceMotion: reduceMotion), value: showAuth)
         .animation(OnboardingMotion.animation(reduceMotion: reduceMotion), value: showSetup)
+        .animation(OnboardingMotion.animation(reduceMotion: reduceMotion), value: showPhoto)
     }
 
     private var nameContent: some View {
@@ -107,6 +115,6 @@ struct DisplayNameView: View {
         guard !trimmedName.isEmpty else { return }
         savedName = trimmedName
         nameIsFocused = false
-        showSetup = true
+        showPhoto = true
     }
 }
