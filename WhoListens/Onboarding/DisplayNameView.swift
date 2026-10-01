@@ -89,6 +89,11 @@ struct DisplayNameView: View {
             }
         }
         .onAppear { name = savedName }
+        .task {
+            try? await Task.sleep(for: .milliseconds(reduceMotion ? 200 : 400))
+            guard !Task.isCancelled else { return }
+            nameIsFocused = true
+        }
     }
 
     private func continueToAuth() {
