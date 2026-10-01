@@ -8,57 +8,54 @@ struct AuthView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    ScatteredAlbumArtworkView()
-                        .frame(height: min(geometry.size.height * 0.52, 470))
+            VStack(alignment: .leading, spacing: 0) {
+                ScatteredAlbumArtworkView()
+                    .frame(height: min(geometry.size.height * 0.47, 430))
 
-                    Spacer(minLength: AppSpacing.medium)
+                Text("Welcome to Who Listens?")
+                    .font(.system(size: 29, weight: .bold))
+                    .foregroundStyle(AppColors.text)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                    Text("Welcome to Who Listens?")
-                        .font(.system(size: 29, weight: .bold))
-                        .foregroundStyle(AppColors.text)
-                        .fixedSize(horizontal: false, vertical: true)
+                Text("Sign in with Spotify to save your profile and get ready to play with friends.")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, AppSpacing.small)
 
-                    Text("Sign in with Spotify to save your profile and get ready to play with friends.")
-                        .font(.system(size: 16))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, AppSpacing.small)
-
-                    Button {
-                        Task { await signInWithSpotify() }
-                    } label: {
-                        HStack(spacing: AppSpacing.small) {
-                            Image("SpotifyMark")
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 24, height: 24)
-                            Text(isAuthenticating ? "Connecting to Spotify…" : "Continue with Spotify")
-                                .font(.system(size: 17, weight: .semibold))
-                            if isAuthenticating {
-                                ProgressView()
-                                    .tint(.white)
-                            }
+                Button {
+                    Task { await signInWithSpotify() }
+                } label: {
+                    HStack(spacing: AppSpacing.small) {
+                        Image("SpotifyMark")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 24, height: 24)
+                        Text(isAuthenticating ? "Connecting to Spotify…" : "Continue with Spotify")
+                            .font(.system(size: 17, weight: .semibold))
+                        if isAuthenticating {
+                            ProgressView()
+                                .tint(.white)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, AppSpacing.medium)
-                        .foregroundStyle(.white)
-                        .background(.black, in: Capsule())
                     }
-                    .buttonStyle(.plain)
-                    .disabled(isAuthenticating)
-                    .padding(.top, AppSpacing.xLarge)
-
-                    TermsDisclaimer(color: .secondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, AppSpacing.large)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, AppSpacing.medium)
+                    .foregroundStyle(.white)
+                    .background(.black, in: Capsule())
                 }
-                .padding(.horizontal, AppSpacing.xLarge)
-                .padding(.bottom, AppSpacing.xLarge)
-                .frame(maxWidth: .infinity, minHeight: geometry.size.height)
+                .buttonStyle(.plain)
+                .disabled(isAuthenticating)
+                .padding(.top, AppSpacing.large)
+
+                TermsDisclaimer(color: .secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, AppSpacing.medium)
+
+                Spacer(minLength: 0)
             }
-            .scrollIndicators(.hidden)
+            .padding(.horizontal, AppSpacing.xLarge)
+            .padding(.bottom, AppSpacing.xLarge)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(AppColors.background.ignoresSafeArea())
         .navigationTitle("")

@@ -12,13 +12,13 @@ struct ScatteredAlbumArtworkView: View {
     }
 
     private let covers: [Cover] = [
-        Cover(index: 0, x: 0.18, y: 0.19, size: 100, colors: [.cyan, .blue]),
-        Cover(index: 1, x: 0.53, y: 0.11, size: 106, colors: [.black, .gray]),
-        Cover(index: 2, x: 0.84, y: 0.21, size: 96, colors: [.green, .teal]),
-        Cover(index: 3, x: 0.24, y: 0.50, size: 108, colors: [.red, .orange]),
-        Cover(index: 4, x: 0.70, y: 0.45, size: 100, colors: [.orange, .pink]),
-        Cover(index: 5, x: 0.31, y: 0.78, size: 94, colors: [.blue, .indigo]),
-        Cover(index: 6, x: 0.77, y: 0.76, size: 100, colors: [.red, .black])
+        Cover(index: 0, x: 0.15, y: 0.27, size: 100, colors: [.cyan, .blue]),
+        Cover(index: 1, x: 0.54, y: 0.19, size: 106, colors: [.black, .gray]),
+        Cover(index: 2, x: 0.87, y: 0.29, size: 96, colors: [.green, .teal]),
+        Cover(index: 3, x: 0.21, y: 0.58, size: 108, colors: [.red, .orange]),
+        Cover(index: 4, x: 0.73, y: 0.53, size: 100, colors: [.orange, .pink]),
+        Cover(index: 5, x: 0.27, y: 0.84, size: 94, colors: [.blue, .indigo]),
+        Cover(index: 6, x: 0.80, y: 0.84, size: 100, colors: [.red, .black])
     ]
 
     var body: some View {
