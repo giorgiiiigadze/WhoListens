@@ -15,10 +15,11 @@ struct ScatteredAlbumArtworkView: View {
         Cover(index: 0, x: 0.14, y: 0.27, size: 100, colors: [.cyan, .blue]),
         Cover(index: 1, x: 0.50, y: 0.19, size: 106, colors: [.black, .gray]),
         Cover(index: 2, x: 0.86, y: 0.29, size: 96, colors: [.green, .teal]),
-        Cover(index: 3, x: 0.18, y: 0.58, size: 108, colors: [.red, .orange]),
-        Cover(index: 4, x: 0.82, y: 0.53, size: 100, colors: [.orange, .pink]),
-        Cover(index: 5, x: 0.23, y: 0.84, size: 94, colors: [.blue, .indigo]),
-        Cover(index: 6, x: 0.77, y: 0.84, size: 100, colors: [.red, .black])
+        Cover(index: 3, x: 0.18, y: 0.58, size: 100, colors: [.red, .orange]),
+        Cover(index: 7, x: 0.50, y: 0.52, size: 90, colors: [.yellow, .orange]),
+        Cover(index: 4, x: 0.82, y: 0.58, size: 96, colors: [.orange, .pink]),
+        Cover(index: 5, x: 0.34, y: 0.84, size: 88, colors: [.blue, .indigo]),
+        Cover(index: 6, x: 0.72, y: 0.86, size: 92, colors: [.red, .black])
     ]
 
     var body: some View {

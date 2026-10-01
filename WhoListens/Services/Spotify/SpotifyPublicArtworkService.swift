@@ -9,7 +9,8 @@ struct SpotifyPublicArtworkService: Sendable {
         "4AdZV63ycxFLF6Hcol0QnB", // Starboy
         "4aawyAB9vmqN3uQ7FjRGTy", // Global Warming
         "07w0rG5TETcyihsEIZR3qG", // SOS
-        "4eLPsYPBmXABThSJ821sqY"  // DAMN.
+        "4eLPsYPBmXABThSJ821sqY", // DAMN.
+        "5Ne1SPpiXQqpCZ6pZCRfIM"  // Thriller
     ]
 
     func albumArtworkData() async -> [Data?] {
