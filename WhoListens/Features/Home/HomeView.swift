@@ -1,6 +1,6 @@
 import SwiftUI
 
-private struct Profile: Decodable {
+struct Profile: Decodable {
     let id: UUID
     let displayName: String
     let birthMonth: Int
@@ -39,8 +39,10 @@ struct HomeView: View {
     @State private var profile: Profile?
     @State private var avatarImage: UIImage?
     @State private var email: String?
+    @State private var joinedAt: Date?
     @State private var userID: UUID?
     @State private var isLoading = true
+    @State private var isShowingProfile = false
     @State private var isSaving = false
     @State private var isSigningOut = false
     @State private var errorMessage: String?
@@ -63,35 +65,35 @@ struct HomeView: View {
                     .font(AppTypography.display)
                     .padding(.top, AppSpacing.large)
 
-                Text("Your profile")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(.secondary)
-
                 if isLoading {
                     ProgressView("Loading profile…")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 48)
                 } else if let profile {
-                    if let avatarImage {
-                        Image(uiImage: avatarImage)
-                            .resizable()
-                            .scaledToFill()
-                        .frame(width: 88, height: 88)
-                        .clipShape(Circle())
-                        .accessibilityLabel("Profile photo")
+                    Button { isShowingProfile = true } label: {
+                        HStack(spacing: 16) {
+                            avatarThumbnail
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text("YOUR PROFILE")
+                                    .font(AppTypography.title)
+                                Text(profile.displayName)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 0)
+                            Image(systemName: "arrow.up.right")
+                                .font(.headline)
+                        }
+                        .foregroundStyle(AppColors.text)
+                        .padding(18)
+                        .background(.white, in: RoundedRectangle(cornerRadius: 24))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 24)
+                                .strokeBorder(.black.opacity(0.08))
+                        }
                     }
-
-                    VStack(spacing: 0) {
-                        detailRow("Display name", value: profile.displayName)
-                        Divider()
-                        detailRow("Age", value: age.map(String.init) ?? "Not available")
-                        Divider()
-                        detailRow("Email", value: email ?? "Not available")
-                    }
-                    .padding(.horizontal, AppSpacing.medium)
-                    .background(.white, in: RoundedRectangle(cornerRadius: AppCornerRadius.large))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: AppCornerRadius.large)
-                            .strokeBorder(Color.black.opacity(0.08))
-                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Open your profile")
                 } else {
                     setupForm
                 }
@@ -129,6 +131,20 @@ struct HomeView: View {
                 }
                 .font(.system(size: 16, weight: .semibold))
                 .disabled(isSigningOut)
+            }
+        }
+        .fullScreenCover(isPresented: $isShowingProfile) {
+            if let profile {
+                NavigationStack {
+                    ProfileView(
+                        profile: profile,
+                        avatarImage: avatarImage,
+                        email: email,
+                        joinedAt: joinedAt,
+                        age: age,
+                        onPhotoChanged: { await refreshPhoto() }
+                    )
+                }
             }
         }
         .task { await loadProfile() }
@@ -174,6 +190,7 @@ struct HomeView: View {
         do {
             let session = try await supabase.auth.session
             email = session.user.email
+            joinedAt = session.user.createdAt
             userID = session.user.id
 
             let existing: Profile? = try await supabase
@@ -255,18 +272,28 @@ struct HomeView: View {
         }
     }
 
-    private func detailRow(_ title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
-            Text(title)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(AppColors.text)
-                .textSelection(.enabled)
+    private var avatarThumbnail: some View {
+        Group {
+            if let avatarImage {
+                Image(uiImage: avatarImage)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Image(systemName: "person.fill")
+                    .font(.title2)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(AppColors.electricPurple)
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, AppSpacing.medium)
+        .frame(width: 58, height: 58)
+        .clipShape(Circle())
+    }
+
+    @MainActor
+    private func refreshPhoto() async {
+        guard let userID else { return }
+        await uploadPendingPhoto(for: userID)
     }
 
     @MainActor
