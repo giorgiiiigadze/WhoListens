@@ -7,9 +7,12 @@ struct AuthView: View {
 
     var body: some View {
         GeometryReader { geometry in
+            let availableHeight = geometry.size.height.isFinite ? max(0, geometry.size.height) : 0
+
             VStack(alignment: .leading, spacing: 0) {
                 ScatteredAlbumArtworkView()
-                    .frame(height: geometry.size.height.isFinite ? max(0, min(geometry.size.height * 0.47, 430)) : 0)
+                    .frame(height: min(availableHeight * 0.47, 430))
+                    .offset(y: min(availableHeight * 0.14, 120))
 
                 Spacer(minLength: AppSpacing.medium)
 

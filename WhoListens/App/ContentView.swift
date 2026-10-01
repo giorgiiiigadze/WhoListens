@@ -79,12 +79,15 @@ struct ContentView: View {
 
     private func welcomePage(start: @escaping () -> Void) -> some View {
         GeometryReader { geometry in
+            let width = geometry.size.width.isFinite ? max(0, geometry.size.width) : 0
+            let height = geometry.size.height.isFinite ? max(0, geometry.size.height) : 0
+
             ZStack {
                 AppGradients.welcome
                     .ignoresSafeArea()
 
                 welcomeTitle
-                    .position(x: geometry.size.width / 2, y: geometry.size.height * 0.48)
+                    .position(x: width / 2, y: height * 0.48)
 
                 Button(action: start) {
                     Text("Get Started!")

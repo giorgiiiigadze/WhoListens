@@ -14,9 +14,10 @@ struct SpotifyCollageView: View {
     private var placeholderCollage: some View {
         GeometryReader { geometry in
             let width = geometry.size.width.isFinite ? max(0, geometry.size.width) : 0
+            let height = geometry.size.height.isFinite ? max(0, geometry.size.height) : 0
             let scale = min(width / 330, 1)
-            let centerX = geometry.size.width / 2
-            let centerY = geometry.size.height / 2
+            let centerX = width / 2
+            let centerY = height / 2
 
             ZStack {
                 Ellipse()
