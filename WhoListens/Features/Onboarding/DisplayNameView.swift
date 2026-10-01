@@ -16,10 +16,7 @@ struct DisplayNameView: View {
     var body: some View {
         ZStack {
             if showAuth {
-                AuthView(onBack: {
-                    showAuth = false
-                    showSetup = false
-                })
+                AuthView()
                     .transition(OnboardingMotion.transition(reduceMotion: reduceMotion))
             } else if showSetup {
                 SettingUpView {

@@ -2,7 +2,6 @@ import SwiftUI
 import AuthenticationServices
 
 struct AuthView: View {
-    var onBack: (() -> Void)? = nil
     @State private var isAuthenticating = false
     @State private var authError: String?
 
@@ -60,19 +59,8 @@ struct AuthView: View {
         .background(AppColors.background.ignoresSafeArea())
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(onBack != nil)
-        .toolbar(.visible, for: .navigationBar)
-        .toolbar {
-            if let onBack {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(action: onBack) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 17, weight: .semibold))
-                    }
-                    .accessibilityLabel("Back to display name")
-                }
-            }
-        }
+        .navigationBarBackButtonHidden()
+        .toolbar(.hidden, for: .navigationBar)
         .alert("Spotify sign-in failed", isPresented: Binding(
             get: { authError != nil },
             set: { if !$0 { authError = nil } }
