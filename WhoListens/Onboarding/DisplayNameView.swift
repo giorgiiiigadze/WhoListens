@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DisplayNameView: View {
     var onBack: (() -> Void)? = nil
+    var isPreview = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("displayName") private var savedName = ""
     @State private var name = ""
@@ -15,7 +16,7 @@ struct DisplayNameView: View {
     var body: some View {
         ZStack {
             if showAuth {
-                AuthView(onBack: { showAuth = false })
+                AuthView(onBack: { showAuth = false }, isPreview: isPreview)
                     .transition(OnboardingMotion.transition(reduceMotion: reduceMotion))
             } else {
                 nameContent
@@ -85,7 +86,9 @@ struct DisplayNameView: View {
 
     private func continueToAuth() {
         guard !trimmedName.isEmpty else { return }
-        savedName = trimmedName
+        if !isPreview {
+            savedName = trimmedName
+        }
         nameIsFocused = false
         showAuth = true
     }

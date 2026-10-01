@@ -29,6 +29,7 @@ private struct NewProfile: Encodable {
 }
 
 struct HomeView: View {
+    var onShowOnboarding: () -> Void = {}
     @AppStorage("displayName") private var savedName = ""
     @AppStorage("pendingBirthMonth") private var pendingBirthMonth = 0
     @AppStorage("pendingBirthYear") private var pendingBirthYear = 0
@@ -88,6 +89,20 @@ struct HomeView: View {
                         .font(.subheadline)
                         .foregroundStyle(.red)
                 }
+
+                #if DEBUG
+                Button("Show onboarding") {
+                    onShowOnboarding()
+                }
+                .font(.system(size: 16, weight: .semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, AppSpacing.medium)
+                .background(.white, in: RoundedRectangle(cornerRadius: AppCornerRadius.medium))
+                .overlay {
+                    RoundedRectangle(cornerRadius: AppCornerRadius.medium)
+                        .strokeBorder(.black.opacity(0.1))
+                }
+                #endif
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, AppSpacing.xLarge)
