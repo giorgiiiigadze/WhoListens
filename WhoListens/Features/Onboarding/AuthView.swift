@@ -7,44 +7,59 @@ struct AuthView: View {
     @State private var authError: String?
 
     var body: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: AppSpacing.large)
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ScatteredAlbumArtworkView()
+                        .frame(height: min(geometry.size.height * 0.52, 470))
 
-            SpotifyCollageView()
-                .frame(height: 330)
-                .accessibilityHidden(true)
+                    Spacer(minLength: AppSpacing.medium)
 
-            Spacer(minLength: AppSpacing.large)
+                    Text("Welcome to Who Listens?")
+                        .font(.system(size: 29, weight: .bold))
+                        .foregroundStyle(AppColors.text)
+                        .fixedSize(horizontal: false, vertical: true)
 
-            Button {
-                Task { await signInWithSpotify() }
-            } label: {
-                HStack(spacing: AppSpacing.small) {
-                    Image("SpotifyMark")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 24, height: 24)
-                    Text(isAuthenticating ? "Connecting to Spotify…" : "Continue with Spotify")
-                        .font(.system(size: 17, weight: .semibold))
-                    if isAuthenticating {
-                        ProgressView()
-                            .tint(.white)
+                    Text("Sign in with Spotify to save your profile and get ready to play with friends.")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, AppSpacing.small)
+
+                    Button {
+                        Task { await signInWithSpotify() }
+                    } label: {
+                        HStack(spacing: AppSpacing.small) {
+                            Image("SpotifyMark")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 24, height: 24)
+                            Text(isAuthenticating ? "Connecting to Spotify…" : "Continue with Spotify")
+                                .font(.system(size: 17, weight: .semibold))
+                            if isAuthenticating {
+                                ProgressView()
+                                    .tint(.white)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, AppSpacing.medium)
+                        .foregroundStyle(.white)
+                        .background(.black, in: Capsule())
                     }
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, AppSpacing.medium)
-                .foregroundStyle(.white)
-                .background(.black, in: Capsule())
-            }
-            .buttonStyle(.plain)
-            .disabled(isAuthenticating)
+                    .buttonStyle(.plain)
+                    .disabled(isAuthenticating)
+                    .padding(.top, AppSpacing.xLarge)
 
-            TermsDisclaimer(color: .secondary)
-                .padding(.top, AppSpacing.large)
+                    TermsDisclaimer(color: .secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, AppSpacing.large)
+                }
+                .padding(.horizontal, AppSpacing.xLarge)
+                .padding(.bottom, AppSpacing.xLarge)
+                .frame(maxWidth: .infinity, minHeight: geometry.size.height)
+            }
+            .scrollIndicators(.hidden)
         }
-        .padding(.horizontal, AppSpacing.xLarge)
-        .padding(.bottom, AppSpacing.xLarge)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(AppColors.background.ignoresSafeArea())
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)

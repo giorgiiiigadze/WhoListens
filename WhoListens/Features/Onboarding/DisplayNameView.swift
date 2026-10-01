@@ -5,6 +5,7 @@ struct DisplayNameView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("displayName") private var savedName = ""
     @State private var name = ""
+    @State private var showSetup = false
     @State private var showAuth = false
     @FocusState private var nameIsFocused: Bool
 
@@ -15,7 +16,15 @@ struct DisplayNameView: View {
     var body: some View {
         ZStack {
             if showAuth {
-                AuthView(onBack: { showAuth = false })
+                AuthView(onBack: {
+                    showAuth = false
+                    showSetup = false
+                })
+                    .transition(OnboardingMotion.transition(reduceMotion: reduceMotion))
+            } else if showSetup {
+                SettingUpView {
+                    showAuth = true
+                }
                     .transition(OnboardingMotion.transition(reduceMotion: reduceMotion))
             } else {
                 nameContent
@@ -23,6 +32,7 @@ struct DisplayNameView: View {
             }
         }
         .animation(OnboardingMotion.animation(reduceMotion: reduceMotion), value: showAuth)
+        .animation(OnboardingMotion.animation(reduceMotion: reduceMotion), value: showSetup)
     }
 
     private var nameContent: some View {
@@ -100,6 +110,6 @@ struct DisplayNameView: View {
         guard !trimmedName.isEmpty else { return }
         savedName = trimmedName
         nameIsFocused = false
-        showAuth = true
+        showSetup = true
     }
 }
