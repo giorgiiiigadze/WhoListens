@@ -86,20 +86,16 @@ struct ContentView: View {
                 welcomeTitle
                     .position(x: geometry.size.width / 2, y: geometry.size.height * 0.48)
 
-                VStack(spacing: AppSpacing.large) {
-                    Button(action: start) {
-                        Text("Get Started!")
-                            .font(AppTypography.body)
-                            .foregroundStyle(.black)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, AppSpacing.medium)
-                            .background(.white, in: Capsule())
-                            .shadow(color: .black.opacity(0.25), radius: 8, y: 5)
-                    }
-                    .buttonStyle(.plain)
-
-                    TermsDisclaimer(color: .white)
+                Button(action: start) {
+                    Text("Get Started!")
+                        .font(AppTypography.body)
+                        .foregroundStyle(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, AppSpacing.medium)
+                        .background(.white, in: Capsule())
+                        .shadow(color: .black.opacity(0.25), radius: 8, y: 5)
                 }
+                .buttonStyle(.plain)
                 .padding(.horizontal, AppSpacing.xLarge)
                 .padding(.bottom, AppSpacing.xLarge)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
