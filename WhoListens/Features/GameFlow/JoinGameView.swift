@@ -1,66 +1,70 @@
 import SwiftUI
 
 struct JoinGameView: View {
-    @AppStorage("hasSeenHowToPlay") private var hasSeenHowToPlay = false
+    @AppStorage("lastRoomCode") private var lastRoomCode = ""
     @State private var roomCode = ""
-    @State private var showNext = false
+    @State private var joinedRoom: GameRoom?
+    @State private var isJoining = false
+    @State private var errorMessage: String?
     @FocusState private var codeIsFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.medium) {
+        VStack(spacing: 24) {
             Spacer()
-
-            Image(systemName: "number.square")
-                .font(.system(size: 48, weight: .light))
-                .foregroundStyle(AppColors.electricPurple)
-                .padding(.bottom, AppSpacing.small)
-
-            Text("Join a game")
+            Image(systemName: "music.note.house.fill")
+                .font(.system(size: 50))
+                .foregroundStyle(AppGradients.brand)
+            Text("JOIN A ROOM")
                 .font(AppTypography.title)
-
-            Text("Ask your friend for their 6-character room code.")
-                .font(.body)
+            Text("Enter the four character code your friend shared.")
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
 
-            TextField("Room code", text: $roomCode)
+            TextField("ROOM CODE", text: $roomCode)
                 .textInputAutocapitalization(.characters)
                 .autocorrectionDisabled()
                 .focused($codeIsFocused)
-                .font(.system(size: 24, weight: .bold, design: .rounded))
-                .tracking(3)
-                .padding(AppSpacing.medium)
-                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: AppCornerRadius.medium))
-                .onChange(of: roomCode) { _, newValue in
-                    roomCode = String(newValue.uppercased().filter { $0.isLetter || $0.isNumber }.prefix(6))
+                .multilineTextAlignment(.center)
+                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .tracking(8)
+                .padding(20)
+                .background(AppColors.electricPurple.opacity(0.1), in: RoundedRectangle(cornerRadius: 22))
+                .onChange(of: roomCode) { _, value in
+                    roomCode = String(value.uppercased().filter { $0.isASCII && ($0.isLetter || $0.isNumber) }.prefix(4))
                 }
 
+            if let errorMessage {
+                Text(errorMessage).foregroundStyle(.red).multilineTextAlignment(.center)
+            }
             Spacer()
-
             Button {
                 codeIsFocused = false
-                showNext = true
+                Task { await join() }
             } label: {
-                Text("Continue")
-                    .font(AppTypography.body)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, AppSpacing.medium)
+                Group {
+                    if isJoining { ProgressView().tint(.white) }
+                    else { Text("Join Room") }
+                }
+                .font(AppTypography.body)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 18)
             }
             .buttonStyle(PrimaryActionStyle())
-            .disabled(roomCode.count != 6)
+            .disabled(roomCode.count != 4 || isJoining)
         }
-        .padding(.horizontal, AppSpacing.xLarge)
-        .padding(.bottom, AppSpacing.xLarge)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(24)
         .background(AppColors.background.ignoresSafeArea())
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.visible, for: .navigationBar)
-        .navigationDestination(isPresented: $showNext) {
-            if hasSeenHowToPlay {
-                GamePreviewView(mode: .join)
-            } else {
-                HowToPlayView(mode: .join)
-            }
+        .navigationDestination(item: $joinedRoom) { room in RoomSessionView(room: room) }
+    }
+
+    private func join() async {
+        isJoining = true
+        defer { isJoining = false }
+        do {
+            joinedRoom = try await GameBackend.join(code: roomCode)
+            lastRoomCode = joinedRoom?.code ?? ""
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 }

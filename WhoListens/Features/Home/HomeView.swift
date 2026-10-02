@@ -36,6 +36,7 @@ struct HomeView: View {
     @AppStorage("pendingBirthMonth") private var pendingBirthMonth = 0
     @AppStorage("pendingBirthYear") private var pendingBirthYear = 0
     @AppStorage("hasSeenHowToPlay") private var hasSeenHowToPlay = false
+    @AppStorage("lastRoomCode") private var lastRoomCode = ""
 
     @State private var profile: Profile?
     @State private var avatarImage: UIImage?
@@ -46,7 +47,8 @@ struct HomeView: View {
     @State private var profileLoadFailed = false
     @State private var isShowingProfile = false
     @State private var showJoinGame = false
-    @State private var showCreateGame = false
+    @State private var createdRoom: GameRoom?
+    @State private var isCreatingRoom = false
     @State private var isSaving = false
     @State private var isSigningOut = false
     @State private var errorMessage: String?
@@ -114,13 +116,7 @@ struct HomeView: View {
         .navigationDestination(isPresented: $showJoinGame) {
             JoinGameView()
         }
-        .navigationDestination(isPresented: $showCreateGame) {
-            if hasSeenHowToPlay {
-                GamePreviewView(mode: .create)
-            } else {
-                HowToPlayView(mode: .create)
-            }
-        }
+        .navigationDestination(item: $createdRoom) { room in RoomSessionView(room: room) }
         .fullScreenCover(isPresented: $isShowingProfile) {
             if let profile {
                 NavigationStack {
@@ -226,8 +222,11 @@ struct HomeView: View {
             }
             .buttonStyle(.plain)
 
-            Button { showCreateGame = true } label: {
-                Text("Create a party")
+            Button { Task { await createRoom() } } label: {
+                Group {
+                    if isCreatingRoom { ProgressView().tint(.black) }
+                    else { Text("Create a party") }
+                }
                     .font(.system(size: 19, weight: .semibold))
                     .foregroundStyle(.black)
                     .frame(maxWidth: .infinity)
@@ -235,6 +234,29 @@ struct HomeView: View {
                     .background(.white, in: RoundedRectangle(cornerRadius: 20))
             }
             .buttonStyle(.plain)
+            .disabled(isCreatingRoom)
+
+            if !lastRoomCode.isEmpty {
+                Button("Resume room \(lastRoomCode)") {
+                    Task {
+                        do { createdRoom = try await GameBackend.join(code: lastRoomCode) }
+                        catch { errorMessage = error.localizedDescription; lastRoomCode = "" }
+                    }
+                }
+                .foregroundStyle(.white)
+            }
+        }
+    }
+
+    private func createRoom() async {
+        guard !isCreatingRoom else { return }
+        isCreatingRoom = true
+        defer { isCreatingRoom = false }
+        do {
+            createdRoom = try await GameBackend.create()
+            lastRoomCode = createdRoom?.code ?? ""
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 
