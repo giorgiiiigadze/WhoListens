@@ -71,7 +71,7 @@ enum ProfilePhotoService {
     }
 
     @MainActor
-    static func uploadPending(for userID: UUID) async throws -> String? {
+    static func uploadPending(for userID: UUID, replacing previousPath: String? = nil) async throws -> String? {
         guard let data = PendingProfilePhoto.load() else { return nil }
         let path = "\(userID.uuidString.lowercased())/\(UUID().uuidString.lowercased()).jpg"
 
@@ -96,6 +96,32 @@ enum ProfilePhotoService {
         }
 
         PendingProfilePhoto.clear()
+        if let previousPath, previousPath != path {
+            let key = cleanupKey(for: userID)
+            var paths = UserDefaults.standard.stringArray(forKey: key) ?? []
+            paths.append(previousPath)
+            UserDefaults.standard.set(paths, forKey: key)
+        }
+        await cleanupReplacedPhotos(for: userID)
         return path
+    }
+
+    @MainActor
+    static func cleanupReplacedPhotos(for userID: UUID) async {
+        let key = cleanupKey(for: userID)
+        let paths = UserDefaults.standard.stringArray(forKey: key) ?? []
+        var remaining: [String] = []
+        for path in paths {
+            do {
+                _ = try await supabase.storage.from("profile-photos").remove(paths: [path])
+            } catch {
+                remaining.append(path)
+            }
+        }
+        UserDefaults.standard.set(remaining, forKey: key)
+    }
+
+    private static func cleanupKey(for userID: UUID) -> String {
+        "pendingPhotoCleanup-\(userID.uuidString.lowercased())"
     }
 }

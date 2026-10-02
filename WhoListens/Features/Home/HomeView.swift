@@ -35,6 +35,7 @@ struct HomeView: View {
     @AppStorage("displayName") private var savedName = ""
     @AppStorage("pendingBirthMonth") private var pendingBirthMonth = 0
     @AppStorage("pendingBirthYear") private var pendingBirthYear = 0
+    @AppStorage("hasSeenHowToPlay") private var hasSeenHowToPlay = false
 
     @State private var profile: Profile?
     @State private var avatarImage: UIImage?
@@ -42,7 +43,10 @@ struct HomeView: View {
     @State private var joinedAt: Date?
     @State private var userID: UUID?
     @State private var isLoading = true
+    @State private var profileLoadFailed = false
     @State private var isShowingProfile = false
+    @State private var showJoinGame = false
+    @State private var showCreateGame = false
     @State private var isSaving = false
     @State private var isSigningOut = false
     @State private var errorMessage: String?
@@ -59,78 +63,62 @@ struct HomeView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.large) {
-                Text("Home")
-                    .font(AppTypography.display)
-                    .padding(.top, AppSpacing.large)
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(spacing: 0) {
+                    topBar
 
-                if isLoading {
-                    ProgressView("Loading profile…")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 48)
-                } else if let profile {
-                    Button { isShowingProfile = true } label: {
-                        HStack(spacing: 16) {
-                            avatarThumbnail
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text("YOUR PROFILE")
-                                    .font(AppTypography.title)
-                                Text(profile.displayName)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer(minLength: 0)
-                            Image(systemName: "arrow.up.right")
-                                .font(.headline)
+                    if isLoading {
+                        Spacer(minLength: 80)
+                        ProgressView("Loading profile…")
+                            .tint(.white)
+                        Spacer(minLength: 80)
+                    } else if profileLoadFailed {
+                        Spacer(minLength: 80)
+                        Button("Retry loading profile") {
+                            Task { await loadProfile() }
                         }
-                        .foregroundStyle(AppColors.text)
+                        .font(.system(size: 16, weight: .semibold))
                         .padding(18)
-                        .background(.white, in: RoundedRectangle(cornerRadius: 24))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 24)
-                                .strokeBorder(.black.opacity(0.08))
-                        }
+                        .background(.white.opacity(0.12), in: Capsule())
+                        Spacer(minLength: 80)
+                    } else if let profile {
+                        Spacer(minLength: 48)
+                        profileCard(profile)
+                        Spacer(minLength: 48)
+                        gameActions
+                    } else {
+                        setupForm
+                            .padding(.top, 48)
+                        Spacer(minLength: 40)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Open your profile")
-                } else {
-                    setupForm
-                }
 
-                if let errorMessage {
-                    Text(errorMessage)
-                        .font(.subheadline)
-                        .foregroundStyle(.red)
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.subheadline)
+                            .foregroundStyle(.red)
+                            .padding(.top, 16)
+                    }
                 }
-
-                #if DEBUG
-                Button("Show onboarding") {
-                    Task { await logOut(showOnboarding: true) }
-                }
-                .font(.system(size: 16, weight: .semibold))
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, AppSpacing.medium)
-                .background(.white, in: RoundedRectangle(cornerRadius: AppCornerRadius.medium))
-                .overlay {
-                    RoundedRectangle(cornerRadius: AppCornerRadius.medium)
-                        .strokeBorder(.black.opacity(0.1))
-                }
-                .disabled(isSigningOut)
-                #endif
+                .padding(.horizontal, 24)
+                .padding(.top, 18)
+                .padding(.bottom, 24)
+                .frame(minHeight: geometry.size.height)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, AppSpacing.xLarge)
         }
-        .background(AppColors.background.ignoresSafeArea())
+        .background(homeBackground.ignoresSafeArea())
+        .foregroundStyle(.white)
         .navigationBarBackButtonHidden()
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Log out") {
-                    Task { await logOut() }
-                }
-                .font(.system(size: 16, weight: .semibold))
-                .disabled(isSigningOut)
+        .toolbar(.hidden, for: .navigationBar)
+        .navigationDestination(isPresented: $showJoinGame) {
+            JoinGameView()
+        }
+        .navigationDestination(isPresented: $showCreateGame) {
+            if hasSeenHowToPlay {
+                GamePreviewView(mode: .create)
+            } else {
+                HowToPlayView(mode: .create)
             }
         }
         .fullScreenCover(isPresented: $isShowingProfile) {
@@ -142,12 +130,112 @@ struct HomeView: View {
                         email: email,
                         joinedAt: joinedAt,
                         age: age,
-                        onPhotoChanged: { await refreshPhoto() }
+                        onPhotoChanged: { try await refreshPhoto() }
                     )
                 }
             }
         }
         .task { await loadProfile() }
+    }
+
+    private var homeBackground: some View {
+        RadialGradient(
+            colors: [Color(white: 0.11), .black],
+            center: .center,
+            startRadius: 20,
+            endRadius: 420
+        )
+    }
+
+    private var topBar: some View {
+        HStack(spacing: 14) {
+            Button { isShowingProfile = profile != nil } label: {
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.system(size: 24))
+                    .frame(width: 54, height: 54)
+                    .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 18))
+                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.25)))
+            }
+            .buttonStyle(.plain)
+            .disabled(profile == nil)
+            .accessibilityLabel("Open your profile")
+
+            Text("My Friends  0")
+                .font(.system(size: 17, weight: .semibold))
+                .frame(maxWidth: .infinity)
+                .frame(height: 54)
+                .background(.white.opacity(0.12), in: Capsule())
+                .overlay(Capsule().strokeBorder(.white.opacity(0.25)))
+
+            Menu {
+                Button("Log out") { Task { await logOut() } }
+                #if DEBUG
+                Button("Show onboarding") { Task { await logOut(showOnboarding: true) } }
+                #endif
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 23, weight: .medium))
+                    .frame(width: 54, height: 54)
+                    .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 18))
+                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.25)))
+            }
+            .disabled(isSigningOut)
+            .accessibilityLabel("Settings")
+        }
+    }
+
+    private func profileCard(_ profile: Profile) -> some View {
+        Button { isShowingProfile = true } label: {
+            VStack(spacing: 14) {
+                avatarThumbnail(size: 112)
+                Text("@\(profile.displayName)")
+                    .font(.system(size: 18, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .padding(22)
+            .frame(width: 220)
+            .background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 24))
+            .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(.white.opacity(0.18)))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open your profile")
+    }
+
+    private var gameActions: some View {
+        VStack(spacing: 14) {
+            Text("Join your friend's game with their PIN, or start your own.")
+                .font(.system(size: 17, weight: .medium))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 28)
+                .padding(.bottom, 12)
+
+            Button { showJoinGame = true } label: {
+                Text("Join a game")
+                    .font(.system(size: 19, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 58)
+                    .background(
+                        LinearGradient(
+                            colors: [Color(red: 1, green: 0.76, blue: 0), AppColors.warmOrange, AppColors.hotPink],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 20)
+                    )
+            }
+            .buttonStyle(.plain)
+
+            Button { showCreateGame = true } label: {
+                Text("Create a party")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(.black)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 58)
+                    .background(.white, in: RoundedRectangle(cornerRadius: 20))
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     private var setupForm: some View {
@@ -182,11 +270,15 @@ struct HomeView: View {
             .disabled(isSaving || draftName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .padding(AppSpacing.medium)
+        .foregroundStyle(.black)
         .background(.white, in: RoundedRectangle(cornerRadius: AppCornerRadius.large))
     }
 
     @MainActor
     private func loadProfile() async {
+        isLoading = true
+        profileLoadFailed = false
+        errorMessage = nil
         do {
             let session = try await supabase.auth.session
             email = session.user.email
@@ -206,6 +298,7 @@ struct HomeView: View {
                 savedName = existing.displayName
                 pendingBirthMonth = 0
                 pendingBirthYear = 0
+                await ProfilePhotoService.cleanupReplacedPhotos(for: existing.id)
                 await uploadPendingPhoto(for: existing.id)
                 if let path = profile?.avatarPath {
                     avatarImage = try? await ProfilePhotoService.download(path: path)
@@ -219,6 +312,7 @@ struct HomeView: View {
                 }
             }
         } catch {
+            profileLoadFailed = true
             errorMessage = "Could not load your profile: \(error.localizedDescription)"
         }
         isLoading = false
@@ -226,7 +320,7 @@ struct HomeView: View {
 
     @MainActor
     private func saveProfile() async {
-        guard let userID else { return }
+        guard let userID, !profileLoadFailed else { return }
         let name = String(draftName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(20))
         guard !name.isEmpty else { return }
         isSaving = true
@@ -255,24 +349,31 @@ struct HomeView: View {
     @MainActor
     private func uploadPendingPhoto(for userID: UUID) async {
         do {
-            if let path = try await ProfilePhotoService.uploadPending(for: userID) {
-                avatarImage = try? await ProfilePhotoService.download(path: path)
-                if let profile {
-                    self.profile = Profile(
-                        id: profile.id,
-                        displayName: profile.displayName,
-                        birthMonth: profile.birthMonth,
-                        birthYear: profile.birthYear,
-                        avatarPath: path
-                    )
-                }
-            }
+            try await savePendingPhoto(for: userID)
         } catch {
             errorMessage = "Your profile photo couldn't be saved. It will retry next time."
         }
     }
 
-    private var avatarThumbnail: some View {
+    @MainActor
+    private func savePendingPhoto(for userID: UUID) async throws {
+        guard let path = try await ProfilePhotoService.uploadPending(
+            for: userID,
+            replacing: profile?.avatarPath
+        ) else { return }
+        avatarImage = try? await ProfilePhotoService.download(path: path)
+        if let profile {
+            self.profile = Profile(
+                id: profile.id,
+                displayName: profile.displayName,
+                birthMonth: profile.birthMonth,
+                birthYear: profile.birthYear,
+                avatarPath: path
+            )
+        }
+    }
+
+    private func avatarThumbnail(size: CGFloat) -> some View {
         Group {
             if let avatarImage {
                 Image(uiImage: avatarImage)
@@ -286,14 +387,14 @@ struct HomeView: View {
                     .background(AppColors.electricPurple)
             }
         }
-        .frame(width: 58, height: 58)
+        .frame(width: size, height: size)
         .clipShape(Circle())
     }
 
     @MainActor
-    private func refreshPhoto() async {
+    private func refreshPhoto() async throws {
         guard let userID else { return }
-        await uploadPendingPhoto(for: userID)
+        try await savePendingPhoto(for: userID)
     }
 
     @MainActor

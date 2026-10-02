@@ -1,3 +1,4 @@
+import AuthenticationServices
 import PhotosUI
 import SwiftUI
 
@@ -6,13 +7,19 @@ struct ProfileView: View {
     let email: String?
     let joinedAt: Date?
     let age: Int?
-    let onPhotoChanged: () async -> Void
+    let onPhotoChanged: () async throws -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     @State private var displayedImage: UIImage?
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isUpdatingPhoto = false
     @State private var photoError: String?
+    @State private var playlists: [SpotifyPlaylist] = []
+    @State private var isLoadingPlaylists = true
+    @State private var isConnectingSpotify = false
+    @State private var playlistNeedsConnection = false
+    @State private var playlistError: String?
 
     init(
         profile: Profile,
@@ -20,7 +27,7 @@ struct ProfileView: View {
         email: String?,
         joinedAt: Date?,
         age: Int?,
-        onPhotoChanged: @escaping () async -> Void
+        onPhotoChanged: @escaping () async throws -> Void
     ) {
         self.profile = profile
         self.email = email
@@ -85,6 +92,7 @@ struct ProfileView: View {
             guard let item else { return }
             Task { await updatePhoto(from: item) }
         }
+        .task { await loadPlaylists() }
         .alert("Photo couldn't be updated", isPresented: Binding(
             get: { photoError != nil },
             set: { if !$0 { photoError = nil } }
@@ -154,22 +162,18 @@ struct ProfileView: View {
     }
 
     private var identityCard: some View {
-        HStack(spacing: 12) {
+        friendsContent.profileGlassCard()
+    }
+
+    private var friendsContent: some View {
+        HStack(spacing: 10) {
             Image(systemName: "person.2.fill")
-                .font(.title3)
-            VStack(alignment: .leading, spacing: 3) {
-                Text("FRIENDS")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.62))
-                Text("Your friends will appear here")
-                    .font(.system(size: 15, weight: .medium))
-            }
-            Spacer()
+                .font(.system(size: 16))
+            Text("0 friends")
+                .font(.system(size: 17, weight: .semibold))
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.13), in: RoundedRectangle(cornerRadius: 24))
-        .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(.white.opacity(0.22)))
+        .frame(maxWidth: .infinity)
+        .frame(height: 58)
     }
 
     private var factsCard: some View {
@@ -181,7 +185,7 @@ struct ProfileView: View {
         .padding(.vertical, 25)
         .padding(.horizontal, 10)
         .frame(maxWidth: .infinity)
-        .background(cardBackground, in: RoundedRectangle(cornerRadius: 28))
+        .profileGlassCard()
     }
 
     private func fact(symbol: String, title: String, value: String) -> some View {
@@ -221,16 +225,73 @@ struct ProfileView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 28)
-        .background(cardBackground, in: RoundedRectangle(cornerRadius: 28))
+        .profileGlassCard()
     }
 
     private var musicCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("YOUR MUSIC")
                 .font(AppTypography.title)
-            Text("Spotify is connected. When playlists and listening history are available, you'll find them here.")
-                .font(.system(size: 15))
-                .foregroundStyle(.white.opacity(0.7))
+            if isLoadingPlaylists {
+                ProgressView("Loading playlists…")
+                    .tint(.white)
+            } else if playlistNeedsConnection {
+                Text("Connect Spotify to see your playlists.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(.white.opacity(0.7))
+                if let playlistError {
+                    Text(playlistError)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white.opacity(0.7))
+                }
+                Button {
+                    Task { await connectSpotify() }
+                } label: {
+                    HStack(spacing: 10) {
+                        if isConnectingSpotify {
+                            ProgressView().tint(.black)
+                        } else {
+                            Image("SpotifyMark")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 20, height: 20)
+                                .padding(4)
+                                .background(.black, in: Circle())
+                        }
+                        Text(isConnectingSpotify ? "Connecting…" : "Connect Spotify")
+                            .font(.system(size: 16, weight: .semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .foregroundStyle(.black)
+                    .background(.white, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(isConnectingSpotify)
+            } else if let playlistError {
+                Text(playlistError)
+                    .font(.system(size: 15))
+                    .foregroundStyle(.white.opacity(0.7))
+                Button("Retry") { Task { await loadPlaylists() } }
+                    .font(.system(size: 15, weight: .semibold))
+            } else if playlists.isEmpty {
+                Text("No playlists yet.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(.white.opacity(0.7))
+            } else {
+                ForEach(playlists) { playlist in
+                    Button {
+                        if let url = playlist.spotifyURL { openURL(url) }
+                    } label: {
+                        playlistRow(playlist)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(playlist.spotifyURL == nil)
+                    if playlist.id != playlists.last?.id {
+                        Divider().overlay(.white.opacity(0.15))
+                    }
+                }
+            }
             if let email {
                 Divider().overlay(.white.opacity(0.2))
                 Text(email)
@@ -241,10 +302,88 @@ struct ProfileView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(24)
-        .background(cardBackground, in: RoundedRectangle(cornerRadius: 28))
+        .profileGlassCard()
     }
 
-    private var cardBackground: Color { Color(white: 0.15) }
+    private func playlistRow(_ playlist: SpotifyPlaylist) -> some View {
+        HStack(spacing: 12) {
+            AsyncImage(url: playlist.artworkURL) { image in
+                image.resizable().scaledToFill()
+            } placeholder: {
+                Image(systemName: "music.note")
+                    .foregroundStyle(.white.opacity(0.55))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(.white.opacity(0.1))
+            }
+            .frame(width: 48, height: 48)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(playlist.name)
+                    .font(.system(size: 16, weight: .semibold))
+                    .lineLimit(1)
+                if let count = playlist.songCount {
+                    Text("\(count) songs")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+            }
+            Spacer(minLength: 0)
+            if playlist.spotifyURL != nil {
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
+    @MainActor
+    private func loadPlaylists() async {
+        isLoadingPlaylists = true
+        playlistError = nil
+        defer { isLoadingPlaylists = false }
+        do {
+            guard let token = try await supabase.auth.session.providerToken else {
+                playlistNeedsConnection = true
+                return
+            }
+            try await fetchPlaylists(token: token)
+        } catch {
+            playlistError = "Could not load playlists. Please try again."
+        }
+    }
+
+    @MainActor
+    private func fetchPlaylists(token: String) async throws {
+        do {
+            playlists = try await SpotifyPlaylistService.playlists(providerToken: token)
+            playlistNeedsConnection = false
+            playlistError = nil
+        } catch SpotifyPlaylistError.authorizationRequired {
+            playlistNeedsConnection = true
+        }
+    }
+
+    @MainActor
+    private func connectSpotify() async {
+        guard !isConnectingSpotify else { return }
+        isConnectingSpotify = true
+        defer { isConnectingSpotify = false }
+        do {
+            let session = try await SpotifyPlaylistService.connect()
+            guard let token = session.providerToken else {
+                playlistError = "Spotify did not provide access to playlists. Please try again."
+                return
+            }
+            try await fetchPlaylists(token: token)
+        } catch {
+            if (error as? ASWebAuthenticationSessionError)?.code != .canceledLogin {
+                playlistError = "Could not connect to Spotify. Please try again."
+            }
+        }
+    }
 
     @MainActor
     private func updatePhoto(from item: PhotosPickerItem) async {
@@ -258,12 +397,28 @@ struct ProfileView: View {
                 return
             }
             try PendingProfilePhoto.save(jpeg)
-            await onPhotoChanged()
+            try await onPhotoChanged()
             displayedImage = image
+            photoError = nil
         } catch {
             photoError = error.localizedDescription
         }
     }
 }
 
-
+private extension View {
+    @ViewBuilder
+    func profileGlassCard() -> some View {
+        let shape = RoundedRectangle(cornerRadius: 24)
+        if #available(iOS 26.0, *) {
+            self
+                .glassEffect(.clear, in: shape)
+                .background(Color(white: 0.08).opacity(0.9), in: shape)
+                .overlay(shape.strokeBorder(.white.opacity(0.25), lineWidth: 0.8))
+        } else {
+            self
+                .background(Color(white: 0.08).opacity(0.9), in: shape)
+                .overlay(shape.strokeBorder(.white.opacity(0.25), lineWidth: 0.8))
+        }
+    }
+}

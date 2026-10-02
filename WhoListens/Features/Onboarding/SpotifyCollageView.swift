@@ -43,11 +43,6 @@ struct SpotifyCollageView: View {
                 coverCard(colors: [.black, Color(white: 0.22)], size: 89 * scale, artworkImage: artworkImage(at: 4))
                     .position(x: centerX - 148 * scale, y: centerY + 8 * scale)
 
-                RoundedRectangle(cornerRadius: 27 * scale)
-                    .strokeBorder(AppColors.warmOrange.opacity(0.22), lineWidth: 1.5)
-                    .frame(width: 122 * scale, height: 122 * scale)
-                    .position(x: centerX, y: centerY)
-
                 RoundedRectangle(cornerRadius: 23 * scale)
                     .fill(LinearGradient(
                         colors: [Color(red: 1, green: 0.27, blue: 0.09), AppColors.warmOrange],
