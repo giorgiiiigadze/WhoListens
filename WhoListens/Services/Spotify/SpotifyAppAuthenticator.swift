@@ -6,16 +6,17 @@ import UIKit
 /// Connects an existing WhoListens account to the installed Spotify app.
 /// Supabase remains responsible for WhoListens account sign-in.
 @MainActor
-final class SpotifyAppAuthenticator: NSObject, @preconcurrency SPTSessionManagerDelegate {
+final class SpotifyAppAuthenticator {
     static let shared = SpotifyAppAuthenticator()
 
     private let callbackURL = URL(string: "wholistens-spotify://callback")!
     private let keychainAccount = "spotify-native-session"
     private let pendingSignInKey = "spotifyNativeSignInPending"
+    private lazy var sessionDelegate = SpotifySessionDelegate(owner: self)
     private var sessionManager: SPTSessionManager?
     private var continuation: CheckedContinuation<String, Error>?
 
-    private override init() {}
+    private init() {}
 
     private var manager: SPTSessionManager {
         if let sessionManager { return sessionManager }
@@ -23,7 +24,7 @@ final class SpotifyAppAuthenticator: NSObject, @preconcurrency SPTSessionManager
         let configuration = SPTConfiguration(clientID: clientID, redirectURL: callbackURL)
         configuration.tokenSwapURL = supabaseURL.appendingPathComponent("functions/v1/spotify-auth/swap")
         configuration.tokenRefreshURL = supabaseURL.appendingPathComponent("functions/v1/spotify-auth/refresh")
-        let manager = SPTSessionManager(configuration: configuration, delegate: self)
+        let manager = SPTSessionManager(configuration: configuration, delegate: sessionDelegate)
         if let storedSession = loadSession() { manager.session = storedSession }
         sessionManager = manager
         return manager
@@ -103,7 +104,7 @@ final class SpotifyAppAuthenticator: NSObject, @preconcurrency SPTSessionManager
         manager.application(UIApplication.shared, open: url, options: [:])
     }
 
-    func sessionManager(manager: SPTSessionManager, didInitiate session: SPTSession) {
+    fileprivate func didInitiate(_ session: SPTSession) {
         saveSession(session)
         if continuation == nil && UserDefaults.standard.bool(forKey: pendingSignInKey) {
             Task {
@@ -114,14 +115,14 @@ final class SpotifyAppAuthenticator: NSObject, @preconcurrency SPTSessionManager
         finish(with: .success(session.accessToken))
     }
 
-    func sessionManager(manager: SPTSessionManager, didFailWith error: Error) {
+    fileprivate func didFail(_ error: Error) {
         if continuation == nil {
             UserDefaults.standard.removeObject(forKey: pendingSignInKey)
         }
         finish(with: .failure(error))
     }
 
-    func sessionManager(manager: SPTSessionManager, didRenew session: SPTSession) {
+    fileprivate func didRenew(_ session: SPTSession) {
         saveSession(session)
         finish(with: .success(session.accessToken))
     }
@@ -159,6 +160,41 @@ final class SpotifyAppAuthenticator: NSObject, @preconcurrency SPTSessionManager
               let data = result as? Data else { return nil }
         return try? NSKeyedUnarchiver.unarchivedObject(ofClass: SPTSession.self, from: data)
     }
+}
+
+/// Spotify's Objective-C callbacks are not actor-isolated. This adapter keeps
+/// protocol conformance separate from the main-actor-owned authentication state.
+private final class SpotifySessionDelegate: NSObject, SPTSessionManagerDelegate {
+    weak var owner: SpotifyAppAuthenticator?
+
+    init(owner: SpotifyAppAuthenticator) {
+        self.owner = owner
+    }
+
+    func sessionManager(manager: SPTSessionManager, didInitiate session: SPTSession) {
+        let owner = owner
+        let session = DelegateValue(session)
+        Task { @MainActor in owner?.didInitiate(session.value) }
+    }
+
+    func sessionManager(manager: SPTSessionManager, didFailWith error: Error) {
+        let owner = owner
+        let error = DelegateValue(error)
+        Task { @MainActor in owner?.didFail(error.value) }
+    }
+
+    func sessionManager(manager: SPTSessionManager, didRenew session: SPTSession) {
+        let owner = owner
+        let session = DelegateValue(session)
+        Task { @MainActor in owner?.didRenew(session.value) }
+    }
+}
+
+/// SPTSession has no Sendable annotation in the Spotify SDK. The adapter only
+/// transfers SDK callback values to the main actor; they are not used elsewhere.
+private struct DelegateValue<Value>: @unchecked Sendable {
+    let value: Value
+    init(_ value: Value) { self.value = value }
 }
 
 private struct AccountExchange: Decodable {

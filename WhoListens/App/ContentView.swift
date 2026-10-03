@@ -55,29 +55,38 @@ private struct SignedInOnboardingView: View {
     @AppStorage("pendingBirthYear") private var pendingBirthYear = 0
 
     var body: some View {
-        NavigationStack {
-            Group {
-                switch destination {
-                case .loading:
-                    Color(red: 26 / 255, green: 26 / 255, blue: 26 / 255).ignoresSafeArea()
-                        .overlay { ProgressView().tint(.white) }
-                case .profileDetails:
-                    AgeConfirmationView(onFinished: { destination = .settingUp })
-                case .settingUp:
-                    SettingUpView(onComplete: saveProfile)
-                case .home:
-                    HomeView()
-                case .failed:
-                    VStack(spacing: 16) {
-                        Text("We couldn't load your profile.")
-                        Button("Try again") { Task { await loadProfile() } }
-                            .buttonStyle(PrimaryActionStyle())
-                    }
-                    .padding(24)
+        Group {
+            if case .home = destination {
+                HomeView()
+            } else {
+                NavigationStack {
+                    onboardingContent
                 }
             }
         }
         .task { await loadProfile() }
+    }
+
+    @ViewBuilder
+    private var onboardingContent: some View {
+        switch destination {
+        case .loading:
+            Color(red: 26 / 255, green: 26 / 255, blue: 26 / 255).ignoresSafeArea()
+                .overlay { ProgressView().tint(.white) }
+        case .profileDetails:
+            AgeConfirmationView(onFinished: { destination = .settingUp })
+        case .settingUp:
+            SettingUpView(onComplete: saveProfile)
+        case .home:
+            EmptyView()
+        case .failed:
+            VStack(spacing: 16) {
+                Text("We couldn't load your profile.")
+                Button("Try again") { Task { await loadProfile() } }
+                    .buttonStyle(PrimaryActionStyle())
+            }
+            .padding(24)
+        }
     }
 
     @MainActor

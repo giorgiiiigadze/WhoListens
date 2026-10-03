@@ -8,15 +8,20 @@ struct AuthView: View {
     @State private var storyIndex = 0
     @State private var storyStartedAt = Date()
     @State private var storyGeneration = 0
+    @State private var transitionDirection = 1
 
     private let storyCount = 3
     private let storyDuration: TimeInterval = 5
+    private let storyColors: [(leading: Color, trailing: Color)] = [
+        (Color(red: 0.27, green: 0.08, blue: 0.30), Color(red: 0.10, green: 0.30, blue: 0.25)),
+        (Color(red: 0.18, green: 0.13, blue: 0.35), Color(red: 0.08, green: 0.24, blue: 0.31)),
+        (Color(red: 0.37, green: 0.12, blue: 0.24), Color(red: 0.31, green: 0.23, blue: 0.12)),
+    ]
 
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                Color(red: 26 / 255, green: 26 / 255, blue: 26 / 255)
-                    .ignoresSafeArea()
+                storyBackground
 
                 VStack(spacing: 0) {
                     TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { timeline in
@@ -44,6 +49,16 @@ struct AuthView: View {
                         .font(AppTypography.display)
                         .foregroundStyle(.white)
                         .padding(.top, 35)
+
+                    ZStack {
+                        if storyIndex == 0 {
+                            ScatteredAlbumArtworkView()
+                                .transition(storyTransition)
+                        }
+                    }
+                    .frame(height: min(geometry.size.height * 0.60, 480))
+                    .padding(.top, 48)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.42), value: storyIndex)
 
                     Spacer(minLength: 24)
 
@@ -86,6 +101,7 @@ struct AuthView: View {
             guard !reduceMotion else { return }
             try? await Task.sleep(for: .seconds(storyDuration))
             guard !Task.isCancelled else { return }
+            transitionDirection = 1
             storyIndex = (storyIndex + 1) % storyCount
             storyStartedAt = Date()
             storyGeneration += 1
@@ -100,6 +116,34 @@ struct AuthView: View {
         }
     }
 
+    private var storyBackground: some View {
+        LinearGradient(
+            colors: [storyColors[storyIndex].leading, storyColors[storyIndex].trailing],
+            startPoint: .topLeading,
+            endPoint: .topTrailing
+        )
+        .overlay {
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .black.opacity(0.25), location: 0.48),
+                    .init(color: .black, location: 1),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+        .ignoresSafeArea()
+        .animation(.easeInOut(duration: 0.45), value: storyIndex)
+    }
+
+    private var storyTransition: AnyTransition {
+        .asymmetric(
+            insertion: .offset(x: CGFloat(transitionDirection) * 65).combined(with: .opacity),
+            removal: .offset(x: CGFloat(transitionDirection) * -65).combined(with: .opacity)
+        )
+    }
+
     private func progress(for index: Int, at date: Date) -> CGFloat {
         if index < storyIndex { return 1 }
         if index > storyIndex { return 0 }
@@ -108,6 +152,7 @@ struct AuthView: View {
     }
 
     private func moveStory(by offset: Int) {
+        transitionDirection = offset
         storyIndex = min(max(storyIndex + offset, 0), storyCount - 1)
         storyStartedAt = Date()
         storyGeneration += 1

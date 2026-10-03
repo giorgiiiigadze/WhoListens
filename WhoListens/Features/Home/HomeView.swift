@@ -16,375 +16,324 @@ struct Profile: Decodable {
     }
 }
 
-private struct NewProfile: Encodable {
-    let id: UUID
-    let displayName: String
-    let birthMonth: Int
-    let birthYear: Int
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case displayName = "display_name"
-        case birthMonth = "birth_month"
-        case birthYear = "birth_year"
-    }
+private enum MainTab: Hashable {
+    case home, play, music, profile
 }
 
 struct HomeView: View {
-    @AppStorage("hasAuthenticatedBefore") private var hasAuthenticatedBefore = false
-    @AppStorage("displayName") private var savedName = ""
-    @AppStorage("pendingBirthMonth") private var pendingBirthMonth = 0
-    @AppStorage("pendingBirthYear") private var pendingBirthYear = 0
-    @AppStorage("hasSeenHowToPlay") private var hasSeenHowToPlay = false
-    @AppStorage("lastRoomCode") private var lastRoomCode = ""
-
+    @State private var selectedTab: MainTab = .home
     @State private var profile: Profile?
     @State private var avatarImage: UIImage?
     @State private var email: String?
     @State private var joinedAt: Date?
-    @State private var userID: UUID?
     @State private var isLoading = true
-    @State private var profileLoadFailed = false
-    @State private var isShowingProfile = false
-    @State private var showJoinGame = false
-    @State private var createdRoom: GameRoom?
-    @State private var isCreatingRoom = false
-    @State private var isSaving = false
+    @State private var profileError: String?
     @State private var isSigningOut = false
-    @State private var errorMessage: String?
-    @State private var draftName = ""
-    @State private var draftMonth = Calendar.current.component(.month, from: Date())
-    @State private var draftYear = Calendar.current.component(.year, from: Date()) - 18
+    @ObservedObject private var artworkStore = SpotifyArtworkStore.shared
+    @AppStorage("lastRoomCode") private var lastRoomCode = ""
+
+    private let background = Color(red: 18 / 255, green: 18 / 255, blue: 23 / 255)
 
     private var age: Int? {
         guard let profile else { return nil }
-        let now = Date()
-        let year = Calendar.current.component(.year, from: now)
-        let month = Calendar.current.component(.month, from: now)
-        return year - profile.birthYear - (month < profile.birthMonth ? 1 : 0)
+        let today = Date()
+        let calendar = Calendar.current
+        return calendar.component(.year, from: today) - profile.birthYear
+            - (calendar.component(.month, from: today) < profile.birthMonth ? 1 : 0)
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            ScrollView {
-                VStack(spacing: 0) {
-                    topBar
-
-                    if isLoading {
-                        Spacer(minLength: 80)
-                        ProgressView("Loading profile…")
-                            .tint(.white)
-                        Spacer(minLength: 80)
-                    } else if profileLoadFailed {
-                        Spacer(minLength: 80)
-                        Button("Retry loading profile") {
-                            Task { await loadProfile() }
-                        }
-                        .font(.system(size: 16, weight: .semibold))
-                        .padding(18)
-                        .background(.white.opacity(0.12), in: Capsule())
-                        Spacer(minLength: 80)
-                    } else if let profile {
-                        Spacer(minLength: 48)
-                        profileCard(profile)
-                        Spacer(minLength: 48)
-                        gameActions
-                    } else {
-                        setupForm
-                            .padding(.top, 48)
-                        Spacer(minLength: 40)
-                    }
-
-                    if let errorMessage {
-                        Text(errorMessage)
-                            .font(.subheadline)
-                            .foregroundStyle(.red)
-                            .padding(.top, 16)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 24)
-                .padding(.top, 18)
-                .padding(.bottom, 24)
-                .frame(minHeight: geometry.size.height)
+        TabView(selection: $selectedTab) {
+            NavigationStack {
+                homePage
             }
-        }
-        .background(homeBackground.ignoresSafeArea())
-        .foregroundStyle(.white)
-        .navigationBarBackButtonHidden()
-        .toolbar(.hidden, for: .navigationBar)
-        .navigationDestination(isPresented: $showJoinGame) {
-            JoinGameView()
-        }
-        .navigationDestination(item: $createdRoom) { room in RoomSessionView(room: room) }
-        .fullScreenCover(isPresented: $isShowingProfile) {
-            if let profile {
-                NavigationStack {
+            .tabItem { Label("Home", systemImage: "house.fill") }
+            .tag(MainTab.home)
+
+            NavigationStack {
+                PlayTabView()
+            }
+            .tabItem { Label("Play", systemImage: "gamecontroller.fill") }
+            .tag(MainTab.play)
+
+            NavigationStack {
+                MusicTabView()
+            }
+            .tabItem { Label("Music", systemImage: "music.note.list") }
+            .tag(MainTab.music)
+
+            NavigationStack {
+                if let profile {
                     ProfileView(
                         profile: profile,
                         avatarImage: avatarImage,
                         email: email,
                         joinedAt: joinedAt,
                         age: age,
-                        onPhotoChanged: { try await refreshPhoto() }
+                        showsCloseButton: false,
+                        onLogOut: { Task { await logOut() } },
+                        onPhotoChanged: refreshPhoto
                     )
+                } else {
+                    loadingProfile
                 }
             }
+            .tabItem { Label("Profile", systemImage: "person.crop.circle") }
+            .tag(MainTab.profile)
         }
+        .tint(AppColors.hotPink)
+        .toolbarBackground(background, for: .tabBar)
+        .toolbarBackground(.visible, for: .tabBar)
+        .preferredColorScheme(.dark)
         .task { await loadProfile() }
     }
 
-    private var homeBackground: some View {
-        RadialGradient(
-            colors: [Color(white: 0.11), .black],
-            center: .center,
-            startRadius: 20,
-            endRadius: 420
-        )
-    }
+    private var homePage: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 26) {
+                header
 
-    private var topBar: some View {
-        HStack(spacing: 14) {
-            Button { isShowingProfile = profile != nil } label: {
-                Image(systemName: "person.crop.circle.fill")
-                    .font(.system(size: 24))
-                    .frame(width: 54, height: 54)
-                    .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 18))
-                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.25)))
-            }
-            .buttonStyle(.plain)
-            .disabled(profile == nil)
-            .accessibilityLabel("Open your profile")
+                if isLoading {
+                    ProgressView("Getting your space ready…")
+                        .tint(.white)
+                        .frame(maxWidth: .infinity, minHeight: 240)
+                } else if let profileError {
+                    VStack(spacing: 14) {
+                        Text(profileError)
+                        Button("Try again") { Task { await loadProfile() } }
+                            .fontWeight(.semibold)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 240)
+                } else if let profile {
+                    Text("Hey, \(profile.displayName).")
+                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.75)
 
-            Text("My Friends  0")
-                .font(.system(size: 17, weight: .semibold))
-                .frame(maxWidth: .infinity)
-                .frame(height: 54)
-                .background(.white.opacity(0.12), in: Capsule())
-                .overlay(Capsule().strokeBorder(.white.opacity(0.25)))
+                    partyHero
 
-            Menu {
-                Button("Log out") { Task { await logOut() } }
-                #if DEBUG
-                Button("Show onboarding") { Task { await logOut(showOnboarding: true) } }
-                #endif
-            } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 23, weight: .medium))
-                    .frame(width: 54, height: 54)
-                    .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 18))
-                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.25)))
-            }
-            .disabled(isSigningOut)
-            .accessibilityLabel("Settings")
-        }
-    }
+                    VStack(alignment: .leading, spacing: 14) {
+                        sectionHeading("Your space", subtitle: "Pick up wherever the music takes you.")
+                        HStack(spacing: 12) {
+                            shortcut(title: "Play", detail: "Join a room", symbol: "person.2.fill", tint: AppColors.hotPink) {
+                                selectedTab = .play
+                            }
+                            shortcut(title: "Music", detail: "Your library", symbol: "music.note", tint: Color(red: 0.20, green: 0.80, blue: 0.56)) {
+                                selectedTab = .music
+                            }
+                        }
+                    }
 
-    private func profileCard(_ profile: Profile) -> some View {
-        Button { isShowingProfile = true } label: {
-            VStack(spacing: 14) {
-                avatarThumbnail(size: 112)
-                Text("@\(profile.displayName)")
-                    .font(.system(size: 18, weight: .semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-            .padding(22)
-            .frame(width: 220)
-            .background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 24))
-            .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(.white.opacity(0.18)))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Open your profile")
-    }
+                    if !lastRoomCode.isEmpty {
+                        Button { selectedTab = .play } label: {
+                            HStack(spacing: 14) {
+                                Image(systemName: "arrow.uturn.backward.circle.fill")
+                                    .font(.system(size: 28))
+                                    .foregroundStyle(AppColors.warmOrange)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Your last room").font(.system(size: 17, weight: .semibold))
+                                    Text("Code \(lastRoomCode) · Tap to resume")
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(.white.opacity(0.6))
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(.white.opacity(0.5))
+                            }
+                            .padding(18)
+                            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 22))
+                        }
+                        .buttonStyle(.plain)
+                    }
 
-    private var gameActions: some View {
-        VStack(spacing: 14) {
-            Text("Join your friend's game with their PIN, or start your own.")
-                .font(.system(size: 17, weight: .medium))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 28)
-                .padding(.bottom, 12)
-
-            Button { showJoinGame = true } label: {
-                Text("Join a game")
-                    .font(.system(size: 19, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 58)
-                    .background(
-                        LinearGradient(
-                            colors: [Color(red: 1, green: 0.76, blue: 0), AppColors.warmOrange, AppColors.hotPink],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        ),
-                        in: RoundedRectangle(cornerRadius: 20)
-                    )
-            }
-            .buttonStyle(.plain)
-
-            Button { Task { await createRoom() } } label: {
-                Group {
-                    if isCreatingRoom { ProgressView().tint(.black) }
-                    else { Text("Create a party") }
+                    musicPreview
                 }
-                    .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(.black)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 58)
-                    .background(.white, in: RoundedRectangle(cornerRadius: 20))
             }
-            .buttonStyle(.plain)
-            .disabled(isCreatingRoom)
+            .padding(.horizontal, 22)
+            .padding(.top, 22)
+            .padding(.bottom, 30)
+        }
+        .background(background.ignoresSafeArea())
+        .foregroundStyle(.white)
+        .toolbar(.hidden, for: .navigationBar)
+        .task { await artworkStore.preload() }
+    }
 
-            if !lastRoomCode.isEmpty {
-                Button("Resume room \(lastRoomCode)") {
-                    Task {
-                        do { createdRoom = try await GameBackend.join(code: lastRoomCode) }
-                        catch { errorMessage = error.localizedDescription; lastRoomCode = "" }
+    private var loadingProfile: some View {
+        background.ignoresSafeArea()
+            .overlay { ProgressView().tint(.white) }
+    }
+
+    private var header: some View {
+        HStack {
+            Text("Who Listens?")
+                .font(AppTypography.title)
+            Spacer()
+            Button { selectedTab = .profile } label: {
+                Group {
+                    if let avatarImage {
+                        Image(uiImage: avatarImage).resizable().scaledToFill()
+                    } else {
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 18))
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(AppColors.electricPurple)
                     }
                 }
-                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .clipShape(Circle())
+                .overlay(Circle().strokeBorder(.white.opacity(0.25)))
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open profile")
         }
     }
 
-    private func createRoom() async {
-        guard !isCreatingRoom else { return }
-        isCreatingRoom = true
-        defer { isCreatingRoom = false }
-        do {
-            createdRoom = try await GameBackend.create()
-            lastRoomCode = createdRoom?.code ?? ""
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
+    private var partyHero: some View {
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 30)
+                .fill(LinearGradient(
+                    colors: [AppColors.electricPurple, AppColors.hotPink, Color(red: 0.91, green: 0.34, blue: 0.29)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ))
 
-    private var setupForm: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.medium) {
-            Text("Complete your profile")
-                .font(.headline)
+            Circle()
+                .strokeBorder(.white.opacity(0.18), lineWidth: 24)
+                .frame(width: 210, height: 210)
+                .offset(x: 210, y: -62)
 
-            TextField("Display name", text: $draftName)
-                .textInputAutocapitalization(.words)
-                .autocorrectionDisabled()
-                .textFieldStyle(.roundedBorder)
+            VStack(alignment: .leading, spacing: 16) {
+                Label("THE GOOD PART", systemImage: "sparkles")
+                    .font(.system(size: 12, weight: .bold))
+                    .tracking(1.4)
+                    .foregroundStyle(.white.opacity(0.85))
 
-            Text("Birth month and year")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                Text("Your music.\nYour people.")
+                    .font(.system(size: 33, weight: .heavy, design: .rounded))
+                    .fixedSize(horizontal: false, vertical: true)
 
-            MonthYearPicker(month: $draftMonth, year: $draftYear)
-                .frame(height: 160)
+                Text("Make a room and see who knows your taste best.")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.87))
 
-            Button {
-                Task { await saveProfile() }
-            } label: {
-                if isSaving {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                } else {
-                    Text("Save profile")
-                        .frame(maxWidth: .infinity)
+                Button { selectedTab = .play } label: {
+                    HStack(spacing: 8) {
+                        Text("Let’s play")
+                        Image(systemName: "arrow.up.right")
+                    }
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 20)
+                    .frame(height: 46)
+                    .background(.white, in: Capsule())
                 }
+                .buttonStyle(.plain)
+                .padding(.top, 3)
             }
-            .buttonStyle(PrimaryActionStyle())
-            .disabled(isSaving || draftName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .padding(26)
         }
-        .padding(AppSpacing.medium)
-        .foregroundStyle(.black)
-        .background(.white, in: RoundedRectangle(cornerRadius: AppCornerRadius.large))
+        .frame(maxWidth: .infinity, minHeight: 285, alignment: .topLeading)
+        .clipShape(RoundedRectangle(cornerRadius: 30))
+    }
+
+    private var musicPreview: some View {
+        Button { selectedTab = .music } label: {
+            HStack(spacing: 16) {
+                HStack(spacing: -26) {
+                    ForEach(0..<3, id: \.self) { index in
+                        Group {
+                            if artworkStore.images.indices.contains(index), let image = artworkStore.images[index] {
+                                Image(uiImage: image).resizable().scaledToFill()
+                            } else {
+                                Image(systemName: "music.note")
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .background(AppColors.electricPurple)
+                            }
+                        }
+                        .frame(width: 68, height: 68)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(background, lineWidth: 3))
+                    }
+                }
+                .frame(width: 152)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Your music")
+                        .font(.system(size: 18, weight: .bold))
+                    Text("Playlists & saved songs")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 24))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func sectionHeading(_ title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title).font(.system(size: 23, weight: .bold, design: .rounded))
+            Text(subtitle).font(.system(size: 14)).foregroundStyle(.white.opacity(0.58))
+        }
+    }
+
+    private func shortcut(title: String, detail: String, symbol: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 10) {
+                Image(systemName: symbol)
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundStyle(tint)
+                    .frame(height: 36)
+                Spacer(minLength: 2)
+                Text(title).font(.system(size: 19, weight: .bold))
+                Text(detail).font(.system(size: 13)).foregroundStyle(.white.opacity(0.6))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: 118)
+            .padding(18)
+            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 24))
+        }
+        .buttonStyle(.plain)
     }
 
     @MainActor
     private func loadProfile() async {
         isLoading = true
-        profileLoadFailed = false
-        errorMessage = nil
+        profileError = nil
         do {
             let session = try await supabase.auth.session
             email = session.user.email
             joinedAt = session.user.createdAt
-            userID = session.user.id
-
-            let existing: Profile? = try await supabase
-                .from("profiles")
+            let loaded: Profile = try await supabase.from("profiles")
                 .select("id, display_name, birth_month, birth_year, avatar_path")
                 .eq("id", value: session.user.id.uuidString)
-                .maybeSingle()
+                .single()
                 .execute()
                 .value
-
-            if let existing {
-                profile = existing
-                savedName = existing.displayName
-                pendingBirthMonth = 0
-                pendingBirthYear = 0
-                await ProfilePhotoService.cleanupReplacedPhotos(for: existing.id)
-                await uploadPendingPhoto(for: existing.id)
-                if let path = profile?.avatarPath {
-                    avatarImage = try? await ProfilePhotoService.download(path: path)
-                }
-            } else {
-                draftName = savedName
-                if (1...12).contains(pendingBirthMonth), pendingBirthYear >= 1900, !savedName.isEmpty {
-                    draftMonth = pendingBirthMonth
-                    draftYear = pendingBirthYear
-                    await saveProfile()
-                }
+            profile = loaded
+            await ProfilePhotoService.cleanupReplacedPhotos(for: loaded.id)
+            try? await refreshPhoto()
+            if let avatarPath = profile?.avatarPath {
+                avatarImage = try? await ProfilePhotoService.download(path: avatarPath)
             }
         } catch {
-            profileLoadFailed = true
-            errorMessage = "Could not load your profile: \(error.localizedDescription)"
+            profileError = "We couldn't load your profile."
         }
         isLoading = false
     }
 
     @MainActor
-    private func saveProfile() async {
-        guard let userID, !profileLoadFailed else { return }
-        let name = String(draftName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(20))
-        guard !name.isEmpty else { return }
-        isSaving = true
-        defer { isSaving = false }
-
-        do {
-            let newProfile = NewProfile(id: userID, displayName: name, birthMonth: draftMonth, birthYear: draftYear)
-            let saved: Profile = try await supabase
-                .from("profiles")
-                .insert(newProfile)
-                .select("id, display_name, birth_month, birth_year, avatar_path")
-                .single()
-                .execute()
-                .value
-            profile = saved
-            savedName = saved.displayName
-            pendingBirthMonth = 0
-            pendingBirthYear = 0
-            errorMessage = nil
-            await uploadPendingPhoto(for: saved.id)
-        } catch {
-            errorMessage = "Could not save your profile: \(error.localizedDescription)"
-        }
-    }
-
-    @MainActor
-    private func uploadPendingPhoto(for userID: UUID) async {
-        do {
-            try await savePendingPhoto(for: userID)
-        } catch {
-            errorMessage = "Your profile photo couldn't be saved. It will retry next time."
-        }
-    }
-
-    @MainActor
-    private func savePendingPhoto(for userID: UUID) async throws {
-        guard let path = try await ProfilePhotoService.uploadPending(
-            for: userID,
-            replacing: profile?.avatarPath
-        ) else { return }
-        avatarImage = try? await ProfilePhotoService.download(path: path)
-        if let profile {
+    private func refreshPhoto() async throws {
+        guard let profile else { return }
+        if let path = try await ProfilePhotoService.uploadPending(for: profile.id, replacing: profile.avatarPath) {
             self.profile = Profile(
                 id: profile.id,
                 displayName: profile.displayName,
@@ -392,49 +341,17 @@ struct HomeView: View {
                 birthYear: profile.birthYear,
                 avatarPath: path
             )
+            avatarImage = try? await ProfilePhotoService.download(path: path)
         }
     }
 
-    private func avatarThumbnail(size: CGFloat) -> some View {
-        Group {
-            if let avatarImage {
-                Image(uiImage: avatarImage)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                Image(systemName: "person.fill")
-                    .font(.title2)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(AppColors.electricPurple)
-            }
-        }
-        .frame(width: size, height: size)
-        .clipShape(Circle())
-    }
-
     @MainActor
-    private func refreshPhoto() async throws {
-        guard let userID else { return }
-        try await savePendingPhoto(for: userID)
-    }
-
-    @MainActor
-    private func logOut(showOnboarding: Bool = false) async {
-        SpotifyAppAuthenticator.shared.clearSession()
+    private func logOut() async {
         guard !isSigningOut else { return }
         isSigningOut = true
-        defer { isSigningOut = false }
-
-        if showOnboarding {
-            hasAuthenticatedBefore = false
-        }
-
+        SpotifyAppAuthenticator.shared.clearSession()
         PendingProfilePhoto.clear()
-
-        // Supabase clears the local session and emits .signedOut before its
-        // server request finishes. The root view handles that event and clears
-        // cached onboarding data even if the network request fails.
         try? await supabase.auth.signOut(scope: .local)
+        isSigningOut = false
     }
 }

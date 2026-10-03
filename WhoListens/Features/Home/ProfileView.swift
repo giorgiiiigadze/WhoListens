@@ -7,6 +7,8 @@ struct ProfileView: View {
     let email: String?
     let joinedAt: Date?
     let age: Int?
+    let showsCloseButton: Bool
+    let onLogOut: (() -> Void)?
     let onPhotoChanged: () async throws -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -30,12 +32,16 @@ struct ProfileView: View {
         email: String?,
         joinedAt: Date?,
         age: Int?,
+        showsCloseButton: Bool = true,
+        onLogOut: (() -> Void)? = nil,
         onPhotoChanged: @escaping () async throws -> Void
     ) {
         self.profile = profile
         self.email = email
         self.joinedAt = joinedAt
         self.age = age
+        self.showsCloseButton = showsCloseButton
+        self.onLogOut = onLogOut
         self.onPhotoChanged = onPhotoChanged
         _displayedImage = State(initialValue: avatarImage)
     }
@@ -74,10 +80,19 @@ struct ProfileView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button { dismiss() } label: {
-                    Image(systemName: "chevron.down")
+                if showsCloseButton {
+                    Button { dismiss() } label: {
+                        Image(systemName: "chevron.down")
+                    }
+                    .accessibilityLabel("Close profile")
+                } else if let onLogOut {
+                    Menu {
+                        Button("Log out", action: onLogOut)
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("Profile settings")
                 }
-                .accessibilityLabel("Close profile")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 PhotosPicker(selection: $selectedPhoto, matching: .images) {
