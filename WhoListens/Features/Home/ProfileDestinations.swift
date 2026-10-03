@@ -20,9 +20,10 @@ struct ProfileSettingsView: View {
     let joinedAt: Date?
     let age: Int?
     @Binding var selectedPhoto: PhotosPickerItem?
-    let isUpdatingPhoto: Bool
+    @Binding var isUpdatingPhoto: Bool
     let onLogOut: (() -> Void)?
-    let avatarImage: UIImage?
+    @Binding var avatarImage: UIImage?
+    @Binding var photoError: String?
     let onProfileChanged: () async -> Void
 
     private let page = Color(red: 31 / 255, green: 31 / 255, blue: 31 / 255)
@@ -34,7 +35,16 @@ struct ProfileSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 NavigationLink {
-                    EditProfileView(profile: profile, avatarImage: avatarImage, selectedPhoto: $selectedPhoto, isUpdatingPhoto: isUpdatingPhoto, onProfileChanged: onProfileChanged)
+                    EditProfileView(
+                        profile: profile,
+                        email: email,
+                        joinedAt: joinedAt,
+                        avatarImage: $avatarImage,
+                        selectedPhoto: $selectedPhoto,
+                        isUpdatingPhoto: $isUpdatingPhoto,
+                        photoError: $photoError,
+                        onProfileChanged: onProfileChanged
+                    )
                 } label: {
                     HStack(spacing: 14) {
                         avatar(size: 58)
@@ -61,24 +71,12 @@ struct ProfileSettingsView: View {
                     .buttonStyle(.plain)
                     .disabled(isRefreshingSpotify)
                 }
-                settingsGroup("ACCOUNT") {
-                    if let email, !email.isEmpty {
-                        informationRow("Email", detail: email, symbol: "envelope")
-                        divider
-                    }
-                    if let age {
-                        informationRow("Age", detail: String(age), symbol: "person")
-                        if joinedAt != nil { divider }
-                    }
-                    if let joinedAt {
-                        informationRow("Joined", detail: joinedAt.formatted(.dateTime.month(.abbreviated).year()), symbol: "calendar")
-                    }
-                }
                 settingsGroup("ABOUT") {
                     informationRow("WhoListens", detail: appVersion, symbol: "info.circle")
                 }
                 if let onLogOut {
                     Button("Log out", role: .destructive, action: onLogOut).font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Color(red: 1, green: 0.23, blue: 0.30))
                         .frame(maxWidth: .infinity).frame(height: 56).background(card, in: Capsule())
                 }
             }.padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 36)
@@ -150,9 +148,12 @@ struct ProfileSettingsView: View {
 
 private struct EditProfileView: View {
     let profile: Profile
-    let avatarImage: UIImage?
+    let email: String?
+    let joinedAt: Date?
+    @Binding var avatarImage: UIImage?
     @Binding var selectedPhoto: PhotosPickerItem?
-    let isUpdatingPhoto: Bool
+    @Binding var isUpdatingPhoto: Bool
+    @Binding var photoError: String?
     let onProfileChanged: () async -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
@@ -160,42 +161,101 @@ private struct EditProfileView: View {
     @State private var bio = ""
     @State private var location = ""
     @State private var school = ""
-    @State private var work = ""
-    @State private var link = ""
-    @State private var sign = ""
     @State private var interests = ""
     @State private var isSaving = false
     @State private var saveError: String?
+    @State private var skeletonPulses = false
     private let page = Color(red: 31 / 255, green: 31 / 255, blue: 31 / 255)
 
     var body: some View {
         ScrollView {
             VStack(spacing: 34) {
-                PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                    ZStack(alignment: .bottomTrailing) {
-                        avatar.frame(width: 154, height: 154).clipShape(Circle())
-                        Image(systemName: isUpdatingPhoto ? "hourglass" : "camera.fill").font(.system(size: 18, weight: .bold)).foregroundStyle(.black)
-                            .frame(width: 44, height: 44).background(.white, in: Circle()).overlay(Circle().stroke(page, lineWidth: 4))
+                VStack(spacing: 12) {
+                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                        ZStack(alignment: .bottomTrailing) {
+                            ZStack {
+                                avatar
+                                if isUpdatingPhoto {
+                                    Circle()
+                                        .fill(Color(white: 0.31))
+                                        .opacity(skeletonPulses ? 0.92 : 0.58)
+                                        .overlay {
+                                            ProgressView()
+                                                .tint(.white)
+                                                .scaleEffect(1.15)
+                                        }
+                                }
+                            }
+                            .frame(width: 154, height: 154)
+                            .clipShape(Circle())
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundStyle(Color(white: 0.12))
+                                .frame(width: 44, height: 44)
+                                .background(.white, in: Circle())
+                                .overlay(Circle().stroke(page, lineWidth: 4))
+                        }
                     }
-                }.disabled(isUpdatingPhoto).padding(.top, 24)
+                    .disabled(isUpdatingPhoto)
+                    .accessibilityLabel(isUpdatingPhoto ? "Updating profile photo" : "Change profile photo")
+
+                    if let email, !email.isEmpty {
+                        Text(email)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                            .textSelection(.enabled)
+                            .padding(.horizontal, 20)
+                    }
+                }
+                .padding(.top, 24)
+
                 VStack(spacing: 0) {
                     field("Name", text: $name); field("Username", text: $username)
                     field("Bio", text: $bio, placeholder: "Add your bio"); field("Location", text: $location, placeholder: "Add a location")
-                    field("Education", text: $school, placeholder: "Add your school"); field("Work", text: $work, placeholder: "Add your work")
-                    field("Link", text: $link, placeholder: "Add a link")
-                    field("Astrological\nSign", text: $sign, placeholder: "Add your sign", height: 68)
+                    field("Education", text: $school, placeholder: "Add your school")
                     field("Interests", text: $interests, placeholder: "Add interests", showsAccentDot: true, isLast: true)
                 }
                 if let saveError { Text(saveError).font(.footnote).foregroundStyle(.red) }
             }.padding(.bottom, 32)
         }
         .background(page.ignoresSafeArea()).foregroundStyle(.white)
+        .safeAreaInset(edge: .bottom) {
+            if let joinedAt {
+                Text("Joined \(joinedAt.formatted(.dateTime.month(.wide).year()))")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .frame(maxWidth: .infinity)
+                    .padding(.bottom, 12)
+                    .background(page)
+            }
+        }
         .navigationTitle("Edit Profile").navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .toolbarBackground(.automatic, for: .navigationBar)
-        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(isSaving ? "Saving…" : "Done") { Task { await save() } }.disabled(isSaving || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) } }
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(isSaving ? "Saving…" : "Done") { Task { await save() } }.disabled(isSaving || isUpdatingPhoto || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) } }
         .onAppear { name = profile.displayName; username = profile.displayName.lowercased().replacingOccurrences(of: " ", with: "_") }
+        .onChange(of: isUpdatingPhoto) { _, updating in
+            if updating {
+                skeletonPulses = false
+                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                    skeletonPulses = true
+                }
+            } else {
+                skeletonPulses = false
+            }
+        }
+        .alert("Photo couldn't be updated", isPresented: Binding(
+            get: { photoError != nil },
+            set: { if !$0 { photoError = nil } }
+        )) {
+            Button("OK", role: .cancel) { photoError = nil }
+        } message: {
+            Text(photoError ?? "Please try again.")
+        }
     }
+
     @ViewBuilder private var avatar: some View {
         if let avatarImage { Image(uiImage: avatarImage).resizable().scaledToFill() }
         else { Image(systemName: "person.fill").font(.system(size: 58)).frame(maxWidth: .infinity, maxHeight: .infinity).background(.white.opacity(0.12)) }
@@ -204,7 +264,6 @@ private struct EditProfileView: View {
         _ title: String,
         text: Binding<String>,
         placeholder: String? = nil,
-        height: CGFloat = 56,
         showsAccentDot: Bool = false,
         isLast: Bool = false
     ) -> some View {
@@ -224,7 +283,7 @@ private struct EditProfileView: View {
                     .tint(.white)
             }
             .padding(.horizontal, 20)
-            .frame(minHeight: height)
+            .frame(minHeight: 56)
             if !isLast { Divider().overlay(.white.opacity(0.18)) }
         }
     }

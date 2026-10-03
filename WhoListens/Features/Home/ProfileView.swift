@@ -86,9 +86,10 @@ struct ProfileView: View {
                         joinedAt: joinedAt,
                         age: age,
                         selectedPhoto: $selectedPhoto,
-                        isUpdatingPhoto: isUpdatingPhoto,
+                        isUpdatingPhoto: $isUpdatingPhoto,
                         onLogOut: onLogOut,
-                        avatarImage: displayedImage,
+                        avatarImage: $displayedImage,
+                        photoError: $photoError,
                         onProfileChanged: onProfileChanged
                     )
                 } label: {
@@ -104,14 +105,6 @@ struct ProfileView: View {
         .task {
             await loadPlaylists()
             await loadRecentlyPlayed()
-        }
-        .alert("Photo couldn't be updated", isPresented: Binding(
-            get: { photoError != nil },
-            set: { if !$0 { photoError = nil } }
-        )) {
-            Button("OK", role: .cancel) { photoError = nil }
-        } message: {
-            Text(photoError ?? "Please try again.")
         }
     }
 
@@ -133,6 +126,17 @@ struct ProfileView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
 
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0.55),
+                        .init(color: .black.opacity(0.12), location: 0.78),
+                        .init(color: .black.opacity(0.52), location: 1),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .allowsHitTesting(false)
+
                 VStack(alignment: .leading, spacing: 4) {
                     Text(profile.displayName)
                         .font(.custom("BowlbyOne-Regular", size: 27, relativeTo: .largeTitle))
@@ -150,7 +154,7 @@ struct ProfileView: View {
                 .padding(.horizontal, 24)
                 .padding(.bottom, 18)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .shadow(color: .black.opacity(0.8), radius: 5, y: 2)
+                .shadow(color: .black.opacity(0.55), radius: 4, y: 2)
             }
             .frame(width: geometry.size.width, height: geometry.size.height + pullDistance)
             .clipShape(UnevenRoundedRectangle(
@@ -723,7 +727,10 @@ struct ProfileView: View {
     @MainActor
     private func updatePhoto(from item: PhotosPickerItem) async {
         isUpdatingPhoto = true
-        defer { isUpdatingPhoto = false }
+        defer {
+            isUpdatingPhoto = false
+            selectedPhoto = nil
+        }
         do {
             guard let data = try await item.loadTransferable(type: Data.self),
                   let jpeg = PendingProfilePhoto.preparedJPEG(from: data),
