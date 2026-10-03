@@ -27,6 +27,9 @@ struct ProfileView: View {
     @State private var playlistNeedsConnection = false
     @State private var playlistError: String?
     @State private var recentlyPlayed: [SpotifyRecentlyPlayedItem] = []
+    @State private var topArtists: [SpotifyTopArtist] = []
+    @State private var isLoadingTopArtists = true
+    @State private var topArtistsError: String?
     @State private var isLoadingRecentlyPlayed = true
     @State private var recentNeedsPermission = false
     @State private var recentError: String?
@@ -109,6 +112,7 @@ struct ProfileView: View {
         .task {
             await loadPlaylists()
             await loadRecentlyPlayed()
+            await loadTopArtists()
         }
     }
 
@@ -295,21 +299,24 @@ struct ProfileView: View {
     }
 
     private var recapArtists: some View {
-        let artists = rankedArtists
         return Group {
-            if isLoadingRecentlyPlayed {
+            if isLoadingTopArtists {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 16) { ForEach(0..<3, id: \.self) { _ in artistSkeleton.frame(width: 106) } }
                         .padding(.horizontal, 20)
                 }
-            } else if artists.isEmpty {
-                Text("Play a few songs on Spotify and your first recap will appear here.")
+            } else if let topArtistsError {
+                Button(topArtistsError) { Task { await loadTopArtists(forceRefresh: true) } }
+                    .font(.system(size: 14))
+                    .padding(.vertical, 42)
+            } else if topArtists.isEmpty && fallbackArtists.isEmpty {
+                Text("Your top artists will appear here as you listen on Spotify.")
                     .font(.system(size: 14)).foregroundStyle(.white.opacity(0.62))
                     .multilineTextAlignment(.center).padding(.vertical, 42).padding(.horizontal, 32)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 16) {
-                        ForEach(Array(artists.enumerated()), id: \.offset) { index, artist in
+                        ForEach(Array(displayArtists.enumerated()), id: \.element.name) { index, artist in
                             VStack(spacing: 10) {
                                 SpotifyCachedArtwork(url: artist.artwork, size: 104, cornerRadius: 52)
                                     .overlay(alignment: .bottomTrailing) {
@@ -326,6 +333,31 @@ struct ProfileView: View {
                 }
             }
         }
+    }
+
+    private var displayArtists: [(name: String, artwork: URL?)] {
+        if !topArtists.isEmpty {
+            return topArtists.map { (name: $0.name, artwork: $0.artworkURL) }
+        }
+        return fallbackArtists
+    }
+
+    private var fallbackArtists: [(name: String, artwork: URL?)] {
+        var counts: [String: (plays: Int, artwork: URL?)] = [:]
+        for item in recentlyPlayed {
+            for artist in item.track.artists {
+                let current = counts[artist.name] ?? (0, item.track.artworkURL)
+                counts[artist.name] = (current.plays + 1, current.artwork ?? item.track.artworkURL)
+            }
+        }
+        let ranked: [(name: String, artwork: URL?, plays: Int)] = counts.map {
+            (name: $0.key, artwork: $0.value.artwork, plays: $0.value.plays)
+        }
+        let sorted = ranked.sorted { lhs, rhs in
+            if lhs.plays != rhs.plays { return lhs.plays > rhs.plays }
+            return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+        }
+        return sorted.map { (name: $0.name, artwork: $0.artwork) }
     }
 
     private var recapTracks: some View {
@@ -352,21 +384,6 @@ struct ProfileView: View {
             Circle().fill(.white.opacity(0.12)).frame(width: 92, height: 92)
             Capsule().fill(.white.opacity(0.12)).frame(width: 70, height: 13)
         }.frame(maxWidth: .infinity)
-    }
-
-    private var rankedArtists: [(name: String, artwork: URL?)] {
-        var counts: [String: (count: Int, artwork: URL?)] = [:]
-        for item in recentlyPlayed {
-            for artist in item.track.artists {
-                let current = counts[artist.name] ?? (0, item.track.artworkURL)
-                counts[artist.name] = (current.count + 1, current.artwork ?? item.track.artworkURL)
-            }
-        }
-        let artists: [(name: String, artwork: URL?, plays: Int)] = counts.map {
-            (name: $0.key, artwork: $0.value.artwork, plays: $0.value.count)
-        }
-        return artists.sorted(by: { lhs, rhs in lhs.plays > rhs.plays })
-            .map { (name: $0.name, artwork: $0.artwork) }
     }
 
     private var onRepeatTracks: [SpotifySavedTrack] {
@@ -672,6 +689,43 @@ struct ProfileView: View {
     }
 
     @MainActor
+    private func loadTopArtists(forceRefresh: Bool = false) async {
+        if !forceRefresh,
+           let cached = SpotifyProfilePreload.shared.topArtists(for: profile.id) {
+            topArtists = cached
+            topArtistsError = nil
+            isLoadingTopArtists = false
+            return
+        }
+        isLoadingTopArtists = topArtists.isEmpty
+        topArtistsError = nil
+        defer { isLoadingTopArtists = false }
+        do {
+            let token: String?
+            if let nativeToken = try await SpotifyAppAuthenticator.shared.accessToken() {
+                token = nativeToken
+            } else {
+                token = try await supabase.auth.session.providerToken
+            }
+            guard let token else { return }
+            try await fetchTopArtists(token: token)
+        } catch SpotifyTopArtistError.permissionRequired {
+            // Existing Spotify grants may not include user-top-read. Keep the
+            // recap populated from listening history without interrupting the user.
+        } catch {
+            if fallbackArtists.isEmpty { topArtistsError = "Couldn’t load top artists. Tap to retry." }
+        }
+    }
+
+    @MainActor
+    private func fetchTopArtists(token: String) async throws {
+        let artists = try await SpotifyTopArtistService.topArtists(providerToken: token)
+        topArtists = artists
+        SpotifyProfilePreload.shared.storeTopArtists(artists, for: profile.id)
+        topArtistsError = nil
+    }
+
+    @MainActor
     private func upgradeRecentPermissionOnce() async {
         let userID = profile.id.uuidString
         guard recentUpgradeAttemptedForUserID != userID else { return }
@@ -722,6 +776,13 @@ struct ProfileView: View {
         do {
             let token = try await SpotifyAppAuthenticator.shared.connect()
             try? await fetchPlaylists(token: token)
+            do {
+                try await fetchTopArtists(token: token)
+            } catch SpotifyTopArtistError.permissionRequired {
+                // Listening history remains available for the recap.
+            } catch {
+                topArtistsError = "Couldn’t load top artists. Tap to retry."
+            }
             do {
                 try await fetchRecentlyPlayed(token: token)
             } catch {

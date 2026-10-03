@@ -40,7 +40,7 @@ final class SpotifyAppAuthenticator {
 
         return try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
-            let scopes: SPTScope = [.playlistReadPrivate, .playlistReadCollaborative, .userReadEmail, .userLibraryRead, .userReadRecentlyPlayed]
+            let scopes: SPTScope = [.playlistReadPrivate, .playlistReadCollaborative, .userReadEmail, .userLibraryRead, .userReadRecentlyPlayed, .userTopRead]
             manager.initiateSession(with: scopes, options: .clientOnly, campaign: "wholistens-sign-in")
         }
     }

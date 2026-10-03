@@ -10,6 +10,7 @@ final class SpotifyProfilePreload {
     private(set) var playlists: [SpotifyPlaylist]?
     private(set) var savedTracks: [SpotifySavedTrack]?
     private(set) var recentlyPlayed: [SpotifyRecentlyPlayedItem]?
+    private(set) var topArtists: [SpotifyTopArtist]?
     private var artwork: [URL: UIImage] = [:]
 
     private init() {}
@@ -30,6 +31,9 @@ final class SpotifyProfilePreload {
 
             if recentlyPlayed == nil {
                 recentlyPlayed = try? await SpotifyRecentlyPlayedService.recent(providerToken: token)
+            }
+            if topArtists == nil {
+                topArtists = try? await SpotifyTopArtistService.topArtists(providerToken: token)
             }
             if savedTracks == nil {
                 savedTracks = try? await SpotifySavedTrackService.recent(providerToken: token)
@@ -55,6 +59,15 @@ final class SpotifyProfilePreload {
         self.userID == userID ? recentlyPlayed : nil
     }
 
+    func topArtists(for userID: UUID) -> [SpotifyTopArtist]? {
+        self.userID == userID ? topArtists : nil
+    }
+
+    func storeTopArtists(_ artists: [SpotifyTopArtist], for userID: UUID) {
+        guard self.userID == userID else { return }
+        topArtists = artists
+    }
+
     func image(for url: URL?) -> UIImage? {
         guard let url else { return nil }
         return artwork[url]
@@ -71,6 +84,7 @@ final class SpotifyProfilePreload {
 
     private func warmArtwork(for userID: UUID) async {
         let candidates = (recentlyPlayed?.prefix(3).compactMap(\.track.artworkURL) ?? [])
+            + (topArtists?.prefix(3).compactMap(\.artworkURL) ?? [])
             + (savedTracks?.prefix(6).compactMap(\.artworkURL) ?? [])
             + (playlists?.prefix(8).compactMap(\.artworkURL) ?? [])
         var seen = Set<URL>()
@@ -98,6 +112,7 @@ final class SpotifyProfilePreload {
         playlists = nil
         savedTracks = nil
         recentlyPlayed = nil
+        topArtists = nil
         artwork = [:]
     }
 }
