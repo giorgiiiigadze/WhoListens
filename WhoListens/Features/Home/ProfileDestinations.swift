@@ -86,6 +86,7 @@ struct ProfileSettingsView: View {
         .background(page.ignoresSafeArea())
         .foregroundStyle(.white)
         .navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .toolbarBackground(.automatic, for: .navigationBar)
         .alert("Spotify", isPresented: Binding(
             get: { spotifyMessage != nil },
@@ -190,6 +191,7 @@ private struct EditProfileView: View {
         }
         .background(page.ignoresSafeArea()).foregroundStyle(.white)
         .navigationTitle("Edit Profile").navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .toolbarBackground(.automatic, for: .navigationBar)
         .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(isSaving ? "Saving…" : "Done") { Task { await save() } }.disabled(isSaving || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) } }
         .onAppear { name = profile.displayName; username = profile.displayName.lowercased().replacingOccurrences(of: " ", with: "_") }
