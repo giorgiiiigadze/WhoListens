@@ -24,11 +24,13 @@ struct HomeView: View {
     @State private var selectedTab: MainTab = .home
     @State private var profile: Profile?
     @State private var avatarImage: UIImage?
+    @State private var isLoadingPhoto = false
     @State private var email: String?
     @State private var joinedAt: Date?
     @State private var isLoading = true
     @State private var profileError: String?
     @State private var isSigningOut = false
+    @State private var profileSkeletonPulse = false
     @ObservedObject private var artworkStore = SpotifyArtworkStore.shared
     @AppStorage("lastRoomCode") private var lastRoomCode = ""
 
@@ -66,10 +68,11 @@ struct HomeView: View {
                 if let profile {
                     ProfileView(
                         profile: profile,
-                        avatarImage: avatarImage,
+                        avatarImage: $avatarImage,
                         email: email,
                         joinedAt: joinedAt,
                         age: age,
+                        isLoadingPhoto: isLoadingPhoto,
                         onLogOut: { Task { await logOut() } },
                         onPhotoChanged: refreshPhoto,
                         onProfileChanged: loadProfile
@@ -161,8 +164,69 @@ struct HomeView: View {
     }
 
     private var loadingProfile: some View {
-        background.ignoresSafeArea()
-            .overlay { ProgressView().tint(.white) }
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 16) {
+                ZStack(alignment: .bottomLeading) {
+                    Color(white: 0.16)
+                    VStack(alignment: .leading, spacing: 10) {
+                        skeletonBar(width: 164, height: 28)
+                        skeletonBar(width: 190, height: 15)
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 20)
+                }
+                .frame(height: 460)
+                .clipShape(UnevenRoundedRectangle(
+                    topLeadingRadius: 0,
+                    bottomLeadingRadius: 28,
+                    bottomTrailingRadius: 28,
+                    topTrailingRadius: 0
+                ))
+
+                skeletonBar(width: nil, height: 46)
+                    .padding(.horizontal, 20)
+
+                VStack(alignment: .leading, spacing: 16) {
+                    skeletonBar(width: 126, height: 15)
+                    ForEach(0..<3, id: \.self) { _ in
+                        HStack(spacing: 12) {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color(white: 0.20))
+                                .frame(width: 58, height: 58)
+                            VStack(alignment: .leading, spacing: 9) {
+                                skeletonBar(width: 170, height: 14)
+                                skeletonBar(width: 116, height: 12)
+                            }
+                            Spacer()
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+
+                RoundedRectangle(cornerRadius: 32)
+                    .fill(Color(white: 0.16))
+                    .frame(height: 320)
+                    .padding(.bottom, 32)
+            }
+            .opacity(profileSkeletonPulse ? 0.62 : 1)
+        }
+        .background(Color.black.ignoresSafeArea())
+        .ignoresSafeArea(edges: .top)
+        .toolbar(.hidden, for: .navigationBar)
+        .onAppear {
+            profileSkeletonPulse = false
+            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
+                profileSkeletonPulse = true
+            }
+        }
+    }
+
+    private func skeletonBar(width: CGFloat?, height: CGFloat) -> some View {
+        Capsule()
+            .fill(Color(white: 0.23))
+            .frame(width: width, height: height)
+            .frame(maxWidth: width == nil ? .infinity : nil, alignment: .leading)
     }
 
     private var header: some View {
@@ -318,14 +382,19 @@ struct HomeView: View {
                 .single()
                 .execute()
                 .value
+            isLoadingPhoto = loaded.avatarPath != nil
             profile = loaded
             await ProfilePhotoService.cleanupReplacedPhotos(for: loaded.id)
             try? await refreshPhoto()
             if let avatarPath = profile?.avatarPath {
                 avatarImage = try? await ProfilePhotoService.download(path: avatarPath)
+            } else {
+                avatarImage = nil
             }
+            isLoadingPhoto = false
         } catch {
             profileError = "We couldn't load your profile."
+            isLoadingPhoto = false
         }
         isLoading = false
     }

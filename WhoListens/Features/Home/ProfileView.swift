@@ -7,15 +7,17 @@ struct ProfileView: View {
     let email: String?
     let joinedAt: Date?
     let age: Int?
+    let isLoadingPhoto: Bool
     let onLogOut: (() -> Void)?
     let onPhotoChanged: () async throws -> Void
     let onProfileChanged: () async -> Void
 
     @Environment(\.openURL) private var openURL
-    @State private var displayedImage: UIImage?
+    @Binding private var displayedImage: UIImage?
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isUpdatingPhoto = false
     @State private var photoError: String?
+    @State private var photoSkeletonPulse = false
     @State private var playlists: [SpotifyPlaylist] = []
     @State private var savedTracks: [SpotifySavedTrack] = []
     @State private var savedTracksError: String?
@@ -33,10 +35,11 @@ struct ProfileView: View {
 
     init(
         profile: Profile,
-        avatarImage: UIImage?,
+        avatarImage: Binding<UIImage?>,
         email: String?,
         joinedAt: Date?,
         age: Int?,
+        isLoadingPhoto: Bool,
         onLogOut: (() -> Void)? = nil,
         onPhotoChanged: @escaping () async throws -> Void,
         onProfileChanged: @escaping () async -> Void = {}
@@ -45,10 +48,11 @@ struct ProfileView: View {
         self.email = email
         self.joinedAt = joinedAt
         self.age = age
+        self.isLoadingPhoto = isLoadingPhoto
         self.onLogOut = onLogOut
         self.onPhotoChanged = onPhotoChanged
         self.onProfileChanged = onProfileChanged
-        _displayedImage = State(initialValue: avatarImage)
+        _displayedImage = avatarImage
     }
 
     var body: some View {
@@ -118,6 +122,16 @@ struct ProfileView: View {
                         .scaledToFill()
                         .frame(width: geometry.size.width, height: geometry.size.height + pullDistance)
                         .clipped()
+                } else if isLoadingPhoto {
+                    Rectangle()
+                        .fill(Color(white: 0.19))
+                        .opacity(photoSkeletonPulse ? 0.57 : 1)
+                        .onAppear {
+                            photoSkeletonPulse = false
+                            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
+                                photoSkeletonPulse = true
+                            }
+                        }
                 } else {
                     Color(red: 0.10, green: 0.10, blue: 0.10)
                     Image(systemName: "person.crop.circle.fill")
