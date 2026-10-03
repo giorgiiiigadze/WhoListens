@@ -32,7 +32,7 @@
 	<key>SpotifyClientID</key>
 	<string>$(SPOTIFY_CLIENT_ID)</string>
     <key>UIUserInterfaceStyle</key>
-    <string>Light</string>
+    <string>Dark</string>
     <key>UIAppFonts</key>
     <array>
         <string>BowlbyOne-Regular.ttf</string>

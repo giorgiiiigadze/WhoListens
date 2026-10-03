@@ -9,6 +9,7 @@ struct ProfileView: View {
     let age: Int?
     let onLogOut: (() -> Void)?
     let onPhotoChanged: () async throws -> Void
+    let onProfileChanged: () async -> Void
 
     @Environment(\.openURL) private var openURL
     @State private var displayedImage: UIImage?
@@ -37,7 +38,8 @@ struct ProfileView: View {
         joinedAt: Date?,
         age: Int?,
         onLogOut: (() -> Void)? = nil,
-        onPhotoChanged: @escaping () async throws -> Void
+        onPhotoChanged: @escaping () async throws -> Void,
+        onProfileChanged: @escaping () async -> Void = {}
     ) {
         self.profile = profile
         self.email = email
@@ -45,28 +47,26 @@ struct ProfileView: View {
         self.age = age
         self.onLogOut = onLogOut
         self.onPhotoChanged = onPhotoChanged
+        self.onProfileChanged = onProfileChanged
         _displayedImage = State(initialValue: avatarImage)
     }
 
     var body: some View {
-        ScrollView {
+        ScrollView(showsIndicators: false) {
             VStack(spacing: 16) {
                 hero
+                identityCard
+                    .padding(.horizontal, 20)
                 recentlyPlayedSection
                     .padding(.horizontal, 20)
-                VStack(spacing: 16) {
-                    identityCard
-                    musicCard
-                }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 32)
+                rediscoverSection
+                    .padding(.bottom, 32)
             }
         }
         .coordinateSpace(name: "profileScroll")
         .background(Color.black.ignoresSafeArea())
         .foregroundStyle(.white)
         .ignoresSafeArea(edges: .top)
-        .navigationBarBackButtonHidden()
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
@@ -87,7 +87,9 @@ struct ProfileView: View {
                         age: age,
                         selectedPhoto: $selectedPhoto,
                         isUpdatingPhoto: isUpdatingPhoto,
-                        onLogOut: onLogOut
+                        onLogOut: onLogOut,
+                        avatarImage: displayedImage,
+                        onProfileChanged: onProfileChanged
                     )
                 } label: {
                     Image(systemName: "gearshape.fill")
@@ -230,6 +232,135 @@ struct ProfileView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 12)
+    }
+
+    private var rediscoverSection: some View {
+        VStack(spacing: 22) {
+            VStack(spacing: 2) {
+                Text("Rediscover")
+                    .font(.custom("BowlbyOne-Regular", size: 24, relativeTo: .title2))
+                Text("Your first recap")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.58))
+            }
+            .padding(.horizontal, 20)
+
+            recapHeading("top artists", colors: [Color(red: 0.47, green: 0.40, blue: 0.79), Color(red: 0.27, green: 0.22, blue: 0.48)])
+            recapArtists
+                .padding(.top, -49)
+            recapHeading("on repeat", colors: [Color(red: 0.82, green: 0.34, blue: 0.25), Color(red: 0.47, green: 0.16, blue: 0.13)])
+            recapTracks
+                .padding(.top, -45)
+
+            Color.clear
+                .frame(height: 48)
+        }
+        .padding(.vertical, 26)
+        .frame(maxWidth: .infinity)
+        .background(
+            LinearGradient(
+                colors: [Color(white: 0.15), Color(red: 0.20, green: 0.15, blue: 0.14)],
+                startPoint: .top,
+                endPoint: .bottom
+            ),
+            in: RoundedRectangle(cornerRadius: 32)
+        )
+    }
+
+    private func recapHeading(_ title: String, colors: [Color]) -> some View {
+        Text(title)
+            .font(.custom("BowlbyOne-Regular", size: 54, relativeTo: .largeTitle))
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .frame(maxWidth: .infinity)
+            .foregroundStyle(LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom))
+    }
+
+    private var recapArtists: some View {
+        let artists = rankedArtists
+        return Group {
+            if isLoadingRecentlyPlayed {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 16) { ForEach(0..<3, id: \.self) { _ in artistSkeleton.frame(width: 106) } }
+                        .padding(.horizontal, 20)
+                }
+            } else if artists.isEmpty {
+                Text("Play a few songs on Spotify and your first recap will appear here.")
+                    .font(.system(size: 14)).foregroundStyle(.white.opacity(0.62))
+                    .multilineTextAlignment(.center).padding(.vertical, 42).padding(.horizontal, 32)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 16) {
+                        ForEach(Array(artists.enumerated()), id: \.offset) { index, artist in
+                            VStack(spacing: 10) {
+                                SpotifyCachedArtwork(url: artist.artwork, size: 104, cornerRadius: 52)
+                                    .overlay(alignment: .bottomTrailing) {
+                                        Text("\(index + 1)")
+                                            .font(.system(size: 16, weight: .bold))
+                                            .frame(width: 35, height: 35)
+                                            .background(Color(red: 0.45, green: 0.37, blue: 0.73), in: Circle())
+                                            .overlay(Circle().stroke(Color(white: 0.15), lineWidth: 3))
+                                    }
+                                Text(artist.name).font(.system(size: 13, weight: .bold)).lineLimit(1).minimumScaleFactor(0.7)
+                            }.frame(width: 112)
+                        }
+                    }.padding(.horizontal, 20)
+                }
+            }
+        }
+    }
+
+    private var recapTracks: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 13) {
+                    ForEach(onRepeatTracks) { track in
+                        VStack(alignment: .leading, spacing: 7) {
+                            SpotifyCachedArtwork(url: track.artworkURL, size: 126, cornerRadius: 2)
+                            Text(track.name).font(.system(size: 15, weight: .semibold)).lineLimit(1)
+                            Text(track.artistNames).font(.system(size: 13)).foregroundStyle(.white.opacity(0.58)).lineLimit(1)
+                        }.frame(width: 126, alignment: .leading)
+                    }
+                    if onRepeatTracks.isEmpty && !isLoadingRecentlyPlayed {
+                        Text("Your most-played songs will show up here.").font(.system(size: 14)).foregroundStyle(.white.opacity(0.58)).frame(width: 230, height: 126)
+                    }
+                }.padding(.horizontal, 20)
+            }
+        }.padding(.top, 4)
+    }
+
+    private var artistSkeleton: some View {
+        VStack(spacing: 10) {
+            Circle().fill(.white.opacity(0.12)).frame(width: 92, height: 92)
+            Capsule().fill(.white.opacity(0.12)).frame(width: 70, height: 13)
+        }.frame(maxWidth: .infinity)
+    }
+
+    private var rankedArtists: [(name: String, artwork: URL?)] {
+        var counts: [String: (count: Int, artwork: URL?)] = [:]
+        for item in recentlyPlayed {
+            for artist in item.track.artists {
+                let current = counts[artist.name] ?? (0, item.track.artworkURL)
+                counts[artist.name] = (current.count + 1, current.artwork ?? item.track.artworkURL)
+            }
+        }
+        let artists: [(name: String, artwork: URL?, plays: Int)] = counts.map {
+            (name: $0.key, artwork: $0.value.artwork, plays: $0.value.count)
+        }
+        return artists.sorted(by: { lhs, rhs in lhs.plays > rhs.plays })
+            .map { (name: $0.name, artwork: $0.artwork) }
+    }
+
+    private var onRepeatTracks: [SpotifySavedTrack] {
+        var counts: [String: (plays: Int, track: SpotifySavedTrack)] = [:]
+        for item in recentlyPlayed {
+            let current = counts[item.track.id] ?? (0, item.track)
+            counts[item.track.id] = (current.plays + 1, current.track)
+        }
+        return counts.values
+            .sorted(by: { lhs, rhs in lhs.plays > rhs.plays })
+            .prefix(8)
+            .map(\.track)
     }
 
     private func recentlyPlayedRow(_ item: SpotifyRecentlyPlayedItem) -> some View {

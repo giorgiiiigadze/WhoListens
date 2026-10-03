@@ -71,7 +71,8 @@ struct HomeView: View {
                         joinedAt: joinedAt,
                         age: age,
                         onLogOut: { Task { await logOut() } },
-                        onPhotoChanged: refreshPhoto
+                        onPhotoChanged: refreshPhoto,
+                        onProfileChanged: loadProfile
                     )
                 } else {
                     loadingProfile

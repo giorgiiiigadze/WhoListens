@@ -5,7 +5,7 @@ struct WhoListensApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .preferredColorScheme(.light)
+                .preferredColorScheme(.dark)
                 .onOpenURL { url in
                     SpotifyAppAuthenticator.shared.handleCallback(url)
                 }

@@ -6,10 +6,12 @@ struct SpotifyCachedArtwork: View {
     let cornerRadius: CGFloat
 
     @State private var loadedImage: UIImage?
+    @State private var loadedURL: URL?
 
     var body: some View {
         Group {
-            if let image = SpotifyProfilePreload.shared.image(for: url) ?? loadedImage {
+            if let image = SpotifyProfilePreload.shared.image(for: url)
+                ?? (loadedURL == url ? loadedImage : nil) {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
@@ -25,8 +27,12 @@ struct SpotifyCachedArtwork: View {
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         .task(id: url) {
             loadedImage = nil
+            loadedURL = nil
             guard let url else { return }
-            loadedImage = await SpotifyProfilePreload.shared.loadArtwork(at: url)
+            let image = await SpotifyProfilePreload.shared.loadArtwork(at: url)
+            guard url == self.url else { return }
+            loadedImage = image
+            loadedURL = url
         }
     }
 }
