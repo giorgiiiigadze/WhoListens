@@ -13,7 +13,7 @@ struct ContentView: View {
         Group {
             switch sessionState {
             case .loading:
-                Color(red: 26 / 255, green: 26 / 255, blue: 26 / 255).ignoresSafeArea()
+                AppColors.background.ignoresSafeArea()
                     .overlay { ProgressView().tint(.white) }
             case .signedIn:
                 SignedInOnboardingView()
@@ -21,6 +21,7 @@ struct ContentView: View {
                 AuthView()
             }
         }
+        .preferredColorScheme(.dark)
         .task {
             for await (event, session) in supabase.auth.authStateChanges {
                 if event == .signedOut || event == .userDeleted {
@@ -71,7 +72,7 @@ private struct SignedInOnboardingView: View {
     private var onboardingContent: some View {
         switch destination {
         case .loading:
-            Color(red: 26 / 255, green: 26 / 255, blue: 26 / 255).ignoresSafeArea()
+            AppColors.background.ignoresSafeArea()
                 .overlay { ProgressView().tint(.white) }
         case .profileDetails:
             AgeConfirmationView(onFinished: { destination = .settingUp })
@@ -100,7 +101,12 @@ private struct SignedInOnboardingView: View {
                 .maybeSingle()
                 .execute()
                 .value
-            destination = existing == nil ? .profileDetails : .home
+            if let existing {
+                await SpotifyProfilePreload.shared.preload(for: existing.id)
+                destination = .home
+            } else {
+                destination = .profileDetails
+            }
         } catch {
             destination = .failed
         }
@@ -128,7 +134,7 @@ private struct SignedInOnboardingView: View {
         _ = try? await ProfilePhotoService.uploadPending(for: profile.id)
         pendingBirthMonth = 0
         pendingBirthYear = 0
-        try? await Task.sleep(for: .milliseconds(700))
+        await SpotifyProfilePreload.shared.preload(for: profile.id)
         destination = .home
     }
 }

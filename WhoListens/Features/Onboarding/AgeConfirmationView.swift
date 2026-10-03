@@ -55,10 +55,10 @@ struct AgeConfirmationView: View {
             } label: {
                 Text("Continue")
                     .font(AppTypography.body)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.black)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, AppSpacing.medium)
-                    .background(.black, in: Capsule())
+                    .background(.white, in: Capsule())
             }
             .buttonStyle(.plain)
 

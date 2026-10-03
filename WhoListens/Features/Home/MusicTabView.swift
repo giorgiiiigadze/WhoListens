@@ -23,9 +23,30 @@ struct MusicTabView: View {
                 }
 
                 if isLoading {
-                    ProgressView("Loading your music…")
-                        .tint(.white)
-                        .frame(maxWidth: .infinity, minHeight: 260)
+                    VStack(alignment: .leading, spacing: 24) {
+                        HStack(spacing: 14) {
+                            ForEach(0..<2, id: \.self) { _ in
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(.white.opacity(0.11))
+                                    .frame(width: 150, height: 150)
+                            }
+                        }
+                        VStack(spacing: 16) {
+                            ForEach(0..<3, id: \.self) { _ in
+                                HStack(spacing: 12) {
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(.white.opacity(0.11))
+                                        .frame(width: 52, height: 52)
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Capsule().fill(.white.opacity(0.12)).frame(width: 135, height: 13)
+                                        Capsule().fill(.white.opacity(0.08)).frame(width: 180, height: 10)
+                                    }
+                                    Spacer()
+                                }
+                            }
+                        }
+                    }
+                    .accessibilityHidden(true)
                 } else if needsConnection {
                     connectionCard
                 } else {
@@ -50,10 +71,10 @@ struct MusicTabView: View {
             .padding(.top, 28)
             .padding(.bottom, 32)
         }
-        .background(Color(red: 18 / 255, green: 18 / 255, blue: 23 / 255).ignoresSafeArea())
+        .background(AppColors.background.ignoresSafeArea())
         .foregroundStyle(.white)
         .toolbar(.hidden, for: .navigationBar)
-        .refreshable { await loadMusic() }
+        .refreshable { await loadMusic(forceRefresh: true) }
         .task { await loadMusic() }
     }
 
@@ -190,17 +211,7 @@ struct MusicTabView: View {
     }
 
     private func artwork(_ url: URL?, size: CGFloat) -> some View {
-        AsyncImage(url: url) { image in
-            image.resizable().scaledToFill()
-        } placeholder: {
-            Image(systemName: "music.note")
-                .font(.system(size: size * 0.28))
-                .foregroundStyle(.white.opacity(0.48))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(AppColors.electricPurple.opacity(0.45))
-        }
-        .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: size * 0.14))
+        SpotifyCachedArtwork(url: url, size: size, cornerRadius: size * 0.14)
     }
 
     private func sectionHeader(_ title: String, subtitle: String) -> some View {
@@ -225,11 +236,21 @@ struct MusicTabView: View {
     }
 
     @MainActor
-    private func loadMusic() async {
-        isLoading = true
+    private func loadMusic(forceRefresh: Bool = false) async {
+        isLoading = playlists.isEmpty && savedTracks.isEmpty
         errorMessage = nil
         defer { isLoading = false }
         do {
+            let userID = try await supabase.auth.session.user.id
+            if !forceRefresh,
+               let cachedPlaylists = SpotifyProfilePreload.shared.playlists(for: userID),
+               let cachedTracks = SpotifyProfilePreload.shared.savedTracks(for: userID) {
+                playlists = cachedPlaylists
+                savedTracks = cachedTracks
+                needsConnection = false
+                savedTracksNeedPermission = false
+                return
+            }
             let token: String?
             if let nativeToken = try await SpotifyAppAuthenticator.shared.accessToken() {
                 token = nativeToken

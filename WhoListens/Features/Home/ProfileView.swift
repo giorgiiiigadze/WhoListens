@@ -7,11 +7,9 @@ struct ProfileView: View {
     let email: String?
     let joinedAt: Date?
     let age: Int?
-    let showsCloseButton: Bool
     let onLogOut: (() -> Void)?
     let onPhotoChanged: () async throws -> Void
 
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @State private var displayedImage: UIImage?
     @State private var selectedPhoto: PhotosPickerItem?
@@ -25,6 +23,12 @@ struct ProfileView: View {
     @State private var isConnectingSpotify = false
     @State private var playlistNeedsConnection = false
     @State private var playlistError: String?
+    @State private var recentlyPlayed: [SpotifyRecentlyPlayedItem] = []
+    @State private var isLoadingRecentlyPlayed = true
+    @State private var recentNeedsPermission = false
+    @State private var recentError: String?
+    @State private var showsAllRecent = false
+    @AppStorage("recentHistoryUpgradeAttemptedForUserID") private var recentUpgradeAttemptedForUserID = ""
 
     init(
         profile: Profile,
@@ -32,7 +36,6 @@ struct ProfileView: View {
         email: String?,
         joinedAt: Date?,
         age: Int?,
-        showsCloseButton: Bool = true,
         onLogOut: (() -> Void)? = nil,
         onPhotoChanged: @escaping () async throws -> Void
     ) {
@@ -40,7 +43,6 @@ struct ProfileView: View {
         self.email = email
         self.joinedAt = joinedAt
         self.age = age
-        self.showsCloseButton = showsCloseButton
         self.onLogOut = onLogOut
         self.onPhotoChanged = onPhotoChanged
         _displayedImage = State(initialValue: avatarImage)
@@ -50,21 +52,10 @@ struct ProfileView: View {
         ScrollView {
             VStack(spacing: 16) {
                 hero
+                recentlyPlayedSection
+                    .padding(.horizontal, 20)
                 VStack(spacing: 16) {
                     identityCard
-                    factsCard
-                    emptyCard(
-                        title: "YOUR GUESSERS",
-                        subtitle: "The ones who always get you right",
-                        symbol: "person.2.wave.2.fill",
-                        message: "Play with friends to see who knows your music best."
-                    )
-                    emptyCard(
-                        title: "YOUR HITS",
-                        subtitle: "The songs everyone guesses right",
-                        symbol: "music.note.list",
-                        message: "Your most recognized songs will appear here after you play."
-                    )
                     musicCard
                 }
                 .padding(.horizontal, 20)
@@ -80,37 +71,38 @@ struct ProfileView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                if showsCloseButton {
-                    Button { dismiss() } label: {
-                        Image(systemName: "chevron.down")
-                    }
-                    .accessibilityLabel("Close profile")
-                } else if let onLogOut {
-                    Menu {
-                        Button("Log out", action: onLogOut)
-                    } label: {
-                        Image(systemName: "gearshape")
-                    }
-                    .accessibilityLabel("Profile settings")
+                NavigationLink {
+                    AddFriendsView()
+                } label: {
+                    Image(systemName: "person.fill.badge.plus")
                 }
+                .accessibilityLabel("Add friends")
             }
             ToolbarItem(placement: .topBarTrailing) {
-                PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                    if isUpdatingPhoto {
-                        ProgressView()
-                    } else {
-                        Image(systemName: "pencil")
-                    }
+                NavigationLink {
+                    ProfileSettingsView(
+                        profile: profile,
+                        email: email,
+                        joinedAt: joinedAt,
+                        age: age,
+                        selectedPhoto: $selectedPhoto,
+                        isUpdatingPhoto: isUpdatingPhoto,
+                        onLogOut: onLogOut
+                    )
+                } label: {
+                    Image(systemName: "gearshape.fill")
                 }
-                .disabled(isUpdatingPhoto)
-                .accessibilityLabel("Change profile photo")
+                .accessibilityLabel("Settings")
             }
         }
         .onChange(of: selectedPhoto) { _, item in
             guard let item else { return }
             Task { await updatePhoto(from: item) }
         }
-        .task { await loadPlaylists() }
+        .task {
+            await loadPlaylists()
+            await loadRecentlyPlayed()
+        }
         .alert("Photo couldn't be updated", isPresented: Binding(
             get: { photoError != nil },
             set: { if !$0 { photoError = nil } }
@@ -132,34 +124,18 @@ struct ProfileView: View {
                         .frame(width: geometry.size.width, height: geometry.size.height + pullDistance)
                         .clipped()
                 } else {
-                    LinearGradient(
-                        colors: [AppColors.electricPurple, Color(red: 0.09, green: 0.08, blue: 0.16)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
+                    Color(red: 0.10, green: 0.10, blue: 0.10)
                     Image(systemName: "person.crop.circle.fill")
                         .font(.system(size: 180, weight: .ultraLight))
                         .foregroundStyle(.white.opacity(0.18))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
 
-                LinearGradient(
-                    stops: [
-                        .init(color: .black.opacity(0.38), location: 0),
-                        .init(color: .clear, location: 0.35),
-                        .init(color: .black.opacity(0.3), location: 0.62),
-                        .init(color: .black, location: 1)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(profile.displayName.uppercased())
-                        .font(AppTypography.display)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(profile.displayName)
+                        .font(.custom("BowlbyOne-Regular", size: 27, relativeTo: .largeTitle))
                         .minimumScaleFactor(0.6)
                         .lineLimit(2)
-                        .shadow(color: .black.opacity(0.4), radius: 8)
                     HStack(spacing: 8) {
                         Image("SpotifyMark")
                             .resizable()
@@ -170,17 +146,139 @@ struct ProfileView: View {
                     }
                 }
                 .padding(.horizontal, 24)
-                .padding(.bottom, 28)
+                .padding(.bottom, 18)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .shadow(color: .black.opacity(0.8), radius: 5, y: 2)
             }
             .frame(width: geometry.size.width, height: geometry.size.height + pullDistance)
+            .clipShape(UnevenRoundedRectangle(
+                topLeadingRadius: 0,
+                bottomLeadingRadius: 28,
+                bottomTrailingRadius: 28,
+                topTrailingRadius: 0
+            ))
             .offset(y: -pullDistance)
         }
         .frame(height: 460)
     }
 
     private var identityCard: some View {
-        friendsContent.profileGlassCard()
+        friendsContent.profileGlassCard(cornerRadius: 16)
+    }
+
+    private var recentlyPlayedSection: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                Text("Recently played")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.65))
+                Spacer()
+                if recentlyPlayed.count > 3 {
+                    Button(showsAllRecent ? "Show less" : "See more") {
+                        withAnimation(.easeInOut(duration: 0.25)) { showsAllRecent.toggle() }
+                    }
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+                }
+            }
+
+            if isLoadingRecentlyPlayed {
+                VStack(spacing: 16) {
+                    ForEach(0..<3, id: \.self) { _ in musicSkeletonRow(artworkSize: 58) }
+                }
+            } else if recentNeedsPermission && recentlyPlayed.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Spotify needs one-time approval to show your listening history. Your WhoListens account stays signed in.")
+                        .foregroundStyle(.white.opacity(0.6))
+                    if let recentError {
+                        Text(recentError)
+                            .foregroundStyle(.white.opacity(0.6))
+                    }
+                    Button(isConnectingSpotify ? "Opening Spotify…" : "Approve in Spotify") {
+                        Task { await connectSpotify() }
+                    }
+                    .fontWeight(.semibold)
+                    .disabled(isConnectingSpotify)
+                }
+                .font(.system(size: 14))
+            } else if recentlyPlayed.isEmpty, let recentError {
+                HStack {
+                    Text(recentError)
+                        .foregroundStyle(.white.opacity(0.6))
+                    Spacer()
+                    Button("Retry") { Task { await loadRecentlyPlayed(forceRefresh: true) } }
+                        .fontWeight(.semibold)
+                }
+                .font(.system(size: 14))
+            } else if recentlyPlayed.isEmpty {
+                Text("Your recently played songs will appear here.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.white.opacity(0.6))
+            } else {
+                VStack(spacing: 16) {
+                    ForEach(showsAllRecent ? recentlyPlayed : Array(recentlyPlayed.prefix(3))) { item in
+                        Button {
+                            if let url = item.track.spotifyURL { openURL(url) }
+                        } label: {
+                            recentlyPlayedRow(item)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(item.track.spotifyURL == nil)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 12)
+    }
+
+    private func recentlyPlayedRow(_ item: SpotifyRecentlyPlayedItem) -> some View {
+        HStack(spacing: 12) {
+            SpotifyCachedArtwork(url: item.track.artworkURL, size: 58, cornerRadius: 5)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(item.track.name)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text(item.track.artistNames)
+                    .font(.system(size: 14))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 6)
+            Text(playbackTimeLabel(for: item.playedAt))
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.white.opacity(0.78))
+                .lineLimit(1)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(Color(white: 0.24), in: Capsule())
+        }
+        .contentShape(Rectangle())
+    }
+
+    private func playbackTimeLabel(for date: Date) -> String {
+        let elapsed = max(0, Date().timeIntervalSince(date))
+        if elapsed < 60 { return "Just now" }
+        if elapsed < 3_600 { return "\(Int(elapsed / 60)) min ago" }
+        if elapsed < 86_400 { return "\(Int(elapsed / 3_600)) hr ago" }
+        if elapsed < 604_800 { return "\(Int(elapsed / 86_400)) days ago" }
+        return date.formatted(.dateTime.month(.abbreviated).day())
+    }
+
+    private func musicSkeletonRow(artworkSize: CGFloat) -> some View {
+        HStack(spacing: 12) {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(.white.opacity(0.12))
+                .frame(width: artworkSize, height: artworkSize)
+            VStack(alignment: .leading, spacing: 8) {
+                Capsule().fill(.white.opacity(0.13)).frame(width: 120, height: 13)
+                Capsule().fill(.white.opacity(0.08)).frame(width: 170, height: 10)
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityHidden(true)
     }
 
     private var friendsContent: some View {
@@ -191,59 +289,7 @@ struct ProfileView: View {
                 .font(.system(size: 17, weight: .semibold))
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 58)
-    }
-
-    private var factsCard: some View {
-        HStack(alignment: .top, spacing: 8) {
-            fact(symbol: "calendar", title: "JOINED", value: joinedAt?.formatted(.dateTime.month(.abbreviated).year()) ?? "—")
-            fact(symbol: "person.fill", title: "AGE", value: age.map(String.init) ?? "—")
-            fact(symbol: "gamecontroller.fill", title: "GAMES", value: "Play one")
-        }
-        .padding(.vertical, 25)
-        .padding(.horizontal, 10)
-        .frame(maxWidth: .infinity)
-        .profileGlassCard()
-    }
-
-    private func fact(symbol: String, title: String, value: String) -> some View {
-        VStack(spacing: 10) {
-            Image(systemName: symbol)
-                .font(.system(size: 25))
-                .frame(height: 32)
-            Text(title)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.6))
-            Text(value)
-                .font(.system(size: 15, weight: .semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func emptyCard(title: String, subtitle: String, symbol: String, message: String) -> some View {
-        VStack(spacing: 12) {
-            Text(title)
-                .font(AppTypography.title)
-                .multilineTextAlignment(.center)
-            Text(subtitle)
-                .font(.system(size: 15))
-                .foregroundStyle(.white.opacity(0.64))
-                .multilineTextAlignment(.center)
-            Image(systemName: symbol)
-                .font(.system(size: 34, weight: .light))
-                .foregroundStyle(.white.opacity(0.4))
-                .padding(.top, 22)
-            Text(message)
-                .font(.system(size: 15, weight: .medium))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 18)
-                .padding(.bottom, 24)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 28)
-        .profileGlassCard()
+        .frame(height: 46)
     }
 
     private var musicCard: some View {
@@ -251,8 +297,10 @@ struct ProfileView: View {
             Text("YOUR MUSIC")
                 .font(AppTypography.title)
             if isLoadingPlaylists {
-                ProgressView("Loading playlists…")
-                    .tint(.white)
+                VStack(spacing: 13) {
+                    ForEach(0..<3, id: \.self) { _ in musicSkeletonRow(artworkSize: 48) }
+                }
+                .padding(.vertical, 8)
             } else if playlistNeedsConnection {
                 Text("Connect Spotify to see your playlists and saved songs.")
                     .font(.system(size: 15))
@@ -356,16 +404,7 @@ struct ProfileView: View {
 
     private func playlistRow(_ playlist: SpotifyPlaylist) -> some View {
         HStack(spacing: 12) {
-            AsyncImage(url: playlist.artworkURL) { image in
-                image.resizable().scaledToFill()
-            } placeholder: {
-                Image(systemName: "music.note")
-                    .foregroundStyle(.white.opacity(0.55))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(.white.opacity(0.1))
-            }
-            .frame(width: 48, height: 48)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            SpotifyCachedArtwork(url: playlist.artworkURL, size: 48, cornerRadius: 8)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(playlist.name)
@@ -390,16 +429,7 @@ struct ProfileView: View {
 
     private func savedTrackRow(_ track: SpotifySavedTrack) -> some View {
         HStack(spacing: 12) {
-            AsyncImage(url: track.artworkURL) { image in
-                image.resizable().scaledToFill()
-            } placeholder: {
-                Image(systemName: "music.note")
-                    .foregroundStyle(.white.opacity(0.55))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(.white.opacity(0.1))
-            }
-            .frame(width: 48, height: 48)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            SpotifyCachedArtwork(url: track.artworkURL, size: 48, cornerRadius: 8)
             VStack(alignment: .leading, spacing: 3) {
                 Text(track.name)
                     .font(.system(size: 16, weight: .semibold))
@@ -421,8 +451,20 @@ struct ProfileView: View {
     }
 
     @MainActor
-    private func loadPlaylists() async {
-        isLoadingPlaylists = true
+    private func loadPlaylists(forceRefresh: Bool = false) async {
+        if !forceRefresh,
+           let cachedPlaylists = SpotifyProfilePreload.shared.playlists(for: profile.id),
+           let cachedSavedTracks = SpotifyProfilePreload.shared.savedTracks(for: profile.id) {
+            playlists = cachedPlaylists
+            savedTracks = cachedSavedTracks
+            playlistNeedsConnection = false
+            playlistError = nil
+            savedTracksError = nil
+            savedTracksNeedsConnection = false
+            isLoadingPlaylists = false
+            return
+        }
+        isLoadingPlaylists = playlists.isEmpty && savedTracks.isEmpty
         playlistError = nil
         defer { isLoadingPlaylists = false }
         do {
@@ -440,6 +482,62 @@ struct ProfileView: View {
             try await fetchPlaylists(token: token)
         } catch {
             playlistError = "Could not load playlists. Please try again."
+        }
+    }
+
+    @MainActor
+    private func loadRecentlyPlayed(forceRefresh: Bool = false) async {
+        if !forceRefresh,
+           let cached = SpotifyProfilePreload.shared.recentlyPlayed(for: profile.id) {
+            recentlyPlayed = cached
+            recentNeedsPermission = false
+            recentError = nil
+            isLoadingRecentlyPlayed = false
+            return
+        }
+        isLoadingRecentlyPlayed = recentlyPlayed.isEmpty
+        recentError = nil
+        defer { isLoadingRecentlyPlayed = false }
+        do {
+            let token: String?
+            if let nativeToken = try await SpotifyAppAuthenticator.shared.accessToken() {
+                token = nativeToken
+            } else {
+                token = try await supabase.auth.session.providerToken
+            }
+            guard let token else {
+                recentNeedsPermission = true
+                await upgradeRecentPermissionOnce()
+                return
+            }
+            try await fetchRecentlyPlayed(token: token)
+            if recentNeedsPermission {
+                await upgradeRecentPermissionOnce()
+            }
+        } catch SpotifyRecentlyPlayedError.unavailable(let message) {
+            recentNeedsPermission = false
+            recentError = message
+        } catch {
+            recentError = "Could not load recent music."
+        }
+    }
+
+    @MainActor
+    private func upgradeRecentPermissionOnce() async {
+        let userID = profile.id.uuidString
+        guard recentUpgradeAttemptedForUserID != userID else { return }
+        recentUpgradeAttemptedForUserID = userID
+        await connectSpotify()
+    }
+
+    @MainActor
+    private func fetchRecentlyPlayed(token: String) async throws {
+        do {
+            recentlyPlayed = try await SpotifyRecentlyPlayedService.recent(providerToken: token)
+            recentNeedsPermission = false
+            recentError = nil
+        } catch SpotifyRecentlyPlayedError.permissionRequired {
+            recentNeedsPermission = true
         }
     }
 
@@ -474,10 +572,19 @@ struct ProfileView: View {
         defer { isConnectingSpotify = false }
         do {
             let token = try await SpotifyAppAuthenticator.shared.connect()
-            try await fetchPlaylists(token: token)
+            try? await fetchPlaylists(token: token)
+            do {
+                try await fetchRecentlyPlayed(token: token)
+            } catch {
+                recentNeedsPermission = false
+                recentError = "Could not load recent music."
+            }
         } catch {
             if (error as? ASWebAuthenticationSessionError)?.code != .canceledLogin {
                 playlistError = "Could not connect to Spotify. Please try again."
+                if recentNeedsPermission {
+                    recentError = "Spotify could not approve listening history. Try again."
+                }
             }
         }
     }
@@ -505,17 +612,14 @@ struct ProfileView: View {
 
 private extension View {
     @ViewBuilder
-    func profileGlassCard() -> some View {
-        let shape = RoundedRectangle(cornerRadius: 24)
+    func profileGlassCard(cornerRadius: CGFloat = 24) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius)
         if #available(iOS 26.0, *) {
             self
-                .glassEffect(.clear, in: shape)
-                .background(Color(white: 0.08).opacity(0.9), in: shape)
-                .overlay(shape.strokeBorder(.white.opacity(0.25), lineWidth: 0.8))
+                .glassEffect(.regular, in: shape)
         } else {
             self
-                .background(Color(white: 0.08).opacity(0.9), in: shape)
-                .overlay(shape.strokeBorder(.white.opacity(0.25), lineWidth: 0.8))
+                .background(.ultraThinMaterial, in: shape)
         }
     }
 }

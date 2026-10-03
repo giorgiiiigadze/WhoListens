@@ -38,7 +38,7 @@ struct ProfilePhotoView: View {
                     } else {
                         Image(systemName: "person.fill")
                             .font(.system(size: 78, weight: .ultraLight))
-                            .foregroundStyle(Color.black.opacity(0.28))
+                            .foregroundStyle(Color.white.opacity(0.28))
                     }
                 }
                 .frame(width: 196, height: 196)

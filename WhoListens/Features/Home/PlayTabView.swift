@@ -90,7 +90,7 @@ struct PlayTabView: View {
             .padding(.top, 28)
             .padding(.bottom, 32)
         }
-        .background(Color(red: 18 / 255, green: 18 / 255, blue: 23 / 255).ignoresSafeArea())
+        .background(AppColors.background.ignoresSafeArea())
         .foregroundStyle(.white)
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(isPresented: $showJoinGame) { JoinGameView() }
@@ -130,7 +130,7 @@ struct PlayTabView: View {
         .padding(25)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(LinearGradient(
-            colors: [Color(red: 0.38, green: 0.18, blue: 0.85), AppColors.hotPink],
+            colors: [Color(red: 0.27, green: 0.23, blue: 0.53), Color(red: 0.10, green: 0.42, blue: 0.38)],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         ), in: RoundedRectangle(cornerRadius: 28))

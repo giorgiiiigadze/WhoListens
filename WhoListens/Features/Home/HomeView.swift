@@ -32,7 +32,7 @@ struct HomeView: View {
     @ObservedObject private var artworkStore = SpotifyArtworkStore.shared
     @AppStorage("lastRoomCode") private var lastRoomCode = ""
 
-    private let background = Color(red: 18 / 255, green: 18 / 255, blue: 23 / 255)
+    private let background = AppColors.background
 
     private var age: Int? {
         guard let profile else { return nil }
@@ -70,7 +70,6 @@ struct HomeView: View {
                         email: email,
                         joinedAt: joinedAt,
                         age: age,
-                        showsCloseButton: false,
                         onLogOut: { Task { await logOut() } },
                         onPhotoChanged: refreshPhoto
                     )
@@ -81,7 +80,7 @@ struct HomeView: View {
             .tabItem { Label("Profile", systemImage: "person.crop.circle") }
             .tag(MainTab.profile)
         }
-        .tint(AppColors.hotPink)
+        .tint(.white)
         .toolbarBackground(background, for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)
         .preferredColorScheme(.dark)
@@ -115,7 +114,7 @@ struct HomeView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         sectionHeading("Your space", subtitle: "Pick up wherever the music takes you.")
                         HStack(spacing: 12) {
-                            shortcut(title: "Play", detail: "Join a room", symbol: "person.2.fill", tint: AppColors.hotPink) {
+                            shortcut(title: "Play", detail: "Join a room", symbol: "person.2.fill", tint: AppColors.mintAccent) {
                                 selectedTab = .play
                             }
                             shortcut(title: "Music", detail: "Your library", symbol: "music.note", tint: Color(red: 0.20, green: 0.80, blue: 0.56)) {
@@ -194,7 +193,7 @@ struct HomeView: View {
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 30)
                 .fill(LinearGradient(
-                    colors: [AppColors.electricPurple, AppColors.hotPink, Color(red: 0.91, green: 0.34, blue: 0.29)],
+                    colors: [Color(red: 0.25, green: 0.21, blue: 0.49), Color(red: 0.12, green: 0.39, blue: 0.39), Color(red: 0.08, green: 0.30, blue: 0.28)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 ))
@@ -350,6 +349,7 @@ struct HomeView: View {
         guard !isSigningOut else { return }
         isSigningOut = true
         SpotifyAppAuthenticator.shared.clearSession()
+        SpotifyProfilePreload.shared.clear()
         PendingProfilePhoto.clear()
         try? await supabase.auth.signOut(scope: .local)
         isSigningOut = false

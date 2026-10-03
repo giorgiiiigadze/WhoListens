@@ -5,8 +5,8 @@ struct PrimaryActionStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(.white)
-            .background(isEnabled ? Color.black : Color.black.opacity(0.35), in: Capsule())
+            .foregroundStyle(.black)
+            .background(isEnabled ? Color.white : Color.white.opacity(0.35), in: Capsule())
             .opacity(configuration.isPressed ? 0.75 : 1)
     }
 }

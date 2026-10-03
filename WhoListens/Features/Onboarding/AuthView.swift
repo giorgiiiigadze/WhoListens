@@ -12,12 +12,6 @@ struct AuthView: View {
 
     private let storyCount = 3
     private let storyDuration: TimeInterval = 5
-    private let storyColors: [(leading: Color, trailing: Color)] = [
-        (Color(red: 0.27, green: 0.08, blue: 0.30), Color(red: 0.10, green: 0.30, blue: 0.25)),
-        (Color(red: 0.18, green: 0.13, blue: 0.35), Color(red: 0.08, green: 0.24, blue: 0.31)),
-        (Color(red: 0.37, green: 0.12, blue: 0.24), Color(red: 0.31, green: 0.23, blue: 0.12)),
-    ]
-
     var body: some View {
         GeometryReader { geometry in
             ZStack {
@@ -117,24 +111,7 @@ struct AuthView: View {
     }
 
     private var storyBackground: some View {
-        LinearGradient(
-            colors: [storyColors[storyIndex].leading, storyColors[storyIndex].trailing],
-            startPoint: .topLeading,
-            endPoint: .topTrailing
-        )
-        .overlay {
-            LinearGradient(
-                stops: [
-                    .init(color: .clear, location: 0),
-                    .init(color: .black.opacity(0.25), location: 0.48),
-                    .init(color: .black, location: 1),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
-        .ignoresSafeArea()
-        .animation(.easeInOut(duration: 0.45), value: storyIndex)
+        AppColors.background.ignoresSafeArea()
     }
 
     private var storyTransition: AnyTransition {
