@@ -2,64 +2,94 @@ import SwiftUI
 import AuthenticationServices
 
 struct AuthView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isAuthenticating = false
     @State private var authError: String?
+    @State private var storyIndex = 0
+    @State private var storyStartedAt = Date()
+    @State private var storyGeneration = 0
+
+    private let storyCount = 3
+    private let storyDuration: TimeInterval = 5
 
     var body: some View {
         GeometryReader { geometry in
-            let availableHeight = geometry.size.height.isFinite ? max(0, geometry.size.height) : 0
+            ZStack {
+                Color(red: 26 / 255, green: 26 / 255, blue: 26 / 255)
+                    .ignoresSafeArea()
 
-            VStack(alignment: .leading, spacing: 0) {
-                ScatteredAlbumArtworkView()
-                    .frame(height: min(availableHeight * 0.47, 430))
-                    .offset(y: min(availableHeight * 0.14, 120))
-
-                Spacer(minLength: AppSpacing.medium)
-
-                Text("Welcome to Who Listens?")
-                    .font(.system(size: 29, weight: .bold))
-                    .foregroundStyle(AppColors.text)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text("Sign in with Spotify to save your profile and get ready to play with friends.")
-                    .font(.system(size: 16))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, AppSpacing.small)
-
-                Button {
-                    Task { await signInWithSpotify() }
-                } label: {
-                    HStack(spacing: AppSpacing.small) {
-                        Image("SpotifyMark")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 24, height: 24)
-                        Text(isAuthenticating ? "Connecting to Spotify…" : "Continue with Spotify")
-                            .font(.system(size: 17, weight: .semibold))
-                        if isAuthenticating {
-                            ProgressView()
-                                .tint(.white)
+                VStack(spacing: 0) {
+                    TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { timeline in
+                        HStack(spacing: 5) {
+                            ForEach(0..<storyCount, id: \.self) { index in
+                                GeometryReader { segment in
+                                    Capsule()
+                                        .fill(.white.opacity(0.35))
+                                        .overlay(alignment: .leading) {
+                                            Capsule()
+                                                .fill(.white)
+                                                .frame(width: segment.size.width * progress(for: index, at: timeline.date))
+                                        }
+                                        .clipShape(Capsule())
+                                }
+                                .frame(height: 4)
+                            }
                         }
+                        .frame(height: 4)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, AppSpacing.medium)
-                    .foregroundStyle(.white)
-                    .background(.black, in: Capsule())
+                    .padding(.top, 12)
+                    .accessibilityLabel("Story \(storyIndex + 1) of \(storyCount)")
+
+                    Text("Who Listens?")
+                        .font(AppTypography.display)
+                        .foregroundStyle(.white)
+                        .padding(.top, 35)
+
+                    Spacer(minLength: 24)
+
+                    Button { Task { await signInWithSpotify() } } label: {
+                        HStack(spacing: AppSpacing.small) {
+                            Image("SpotifyMark")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 24, height: 24)
+                                .colorMultiply(Color(red: 30 / 255, green: 215 / 255, blue: 96 / 255))
+                            Text(isAuthenticating ? "Connecting to Spotify…" : "Continue with Spotify")
+                                .font(.system(size: 17, weight: .semibold))
+                            if isAuthenticating {
+                                ProgressView().tint(.black)
+                            }
+                        }
+                        .foregroundStyle(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, AppSpacing.medium)
+                        .background(.white, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isAuthenticating)
+
+                    TermsDisclaimer(color: .white.opacity(0.53))
+                        .padding(.top, 18)
                 }
-                .buttonStyle(.plain)
-                .disabled(isAuthenticating)
-                .padding(.top, AppSpacing.large)
+                .padding(.horizontal, 28)
+                .padding(.bottom, max(14, geometry.safeAreaInsets.bottom == 0 ? 20 : 8))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .padding(.horizontal, AppSpacing.xLarge)
-            .padding(.bottom, AppSpacing.xLarge)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 40).onEnded { value in
+                if value.translation.width < -40 { moveStory(by: 1) }
+                if value.translation.width > 40 { moveStory(by: -1) }
+            })
         }
-        .background(AppColors.background.ignoresSafeArea())
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden()
-        .toolbar(.hidden, for: .navigationBar)
+        .preferredColorScheme(.dark)
+        .task(id: storyGeneration) {
+            guard !reduceMotion else { return }
+            try? await Task.sleep(for: .seconds(storyDuration))
+            guard !Task.isCancelled else { return }
+            storyIndex = (storyIndex + 1) % storyCount
+            storyStartedAt = Date()
+            storyGeneration += 1
+        }
         .alert("Spotify sign-in failed", isPresented: Binding(
             get: { authError != nil },
             set: { if !$0 { authError = nil } }
@@ -70,14 +100,26 @@ struct AuthView: View {
         }
     }
 
+    private func progress(for index: Int, at date: Date) -> CGFloat {
+        if index < storyIndex { return 1 }
+        if index > storyIndex { return 0 }
+        if reduceMotion { return 1 }
+        return CGFloat(min(1, max(0, date.timeIntervalSince(storyStartedAt) / storyDuration)))
+    }
+
+    private func moveStory(by offset: Int) {
+        storyIndex = min(max(storyIndex + offset, 0), storyCount - 1)
+        storyStartedAt = Date()
+        storyGeneration += 1
+    }
+
     @MainActor
     private func signInWithSpotify() async {
         guard !isAuthenticating else { return }
         isAuthenticating = true
         defer { isAuthenticating = false }
-
         do {
-            _ = try await SpotifyPlaylistService.connect()
+            try await SpotifyAppAuthenticator.shared.signIn()
         } catch {
             if (error as? ASWebAuthenticationSessionError)?.code != .canceledLogin {
                 authError = "We couldn't connect to Spotify. Please try again."

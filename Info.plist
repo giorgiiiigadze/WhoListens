@@ -2,8 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleURLTypes</key>
-    <array>
+	<key>CFBundleURLTypes</key>
+	<array>
         <dict>
             <key>CFBundleTypeRole</key>
             <string>Editor</string>
@@ -13,8 +13,24 @@
             <array>
                 <string>com.giorgigiorgadze.wholistens</string>
             </array>
-        </dict>
-    </array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.giorgigiorgadze.WhoListens.spotify</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>wholistens-spotify</string>
+			</array>
+		</dict>
+	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>spotify</string>
+	</array>
+	<key>SpotifyClientID</key>
+	<string>$(SPOTIFY_CLIENT_ID)</string>
     <key>UIUserInterfaceStyle</key>
     <string>Light</string>
     <key>UIAppFonts</key>

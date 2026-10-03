@@ -1,7 +1,8 @@
 import SwiftUI
 
 struct SettingUpView: View {
-    let onComplete: () -> Void
+    let onComplete: () async throws -> Void
+    @State private var errorMessage: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -22,6 +23,16 @@ struct SettingUpView: View {
                         .foregroundStyle(.secondary)
                 }
                 .multilineTextAlignment(.center)
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(.subheadline)
+                        .foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 16)
+                    Button("Try again") { Task { await finishSetup() } }
+                        .buttonStyle(PrimaryActionStyle())
+                        .padding(.top, 12)
+                }
             }
 
             Spacer()
@@ -30,10 +41,16 @@ struct SettingUpView: View {
         .background(AppColors.background.ignoresSafeArea())
         .navigationBarBackButtonHidden()
         .toolbar(.hidden, for: .navigationBar)
-        .task {
-            try? await Task.sleep(for: .milliseconds(1500))
-            guard !Task.isCancelled else { return }
-            onComplete()
+        .task { await finishSetup() }
+    }
+
+    @MainActor
+    private func finishSetup() async {
+        errorMessage = nil
+        do {
+            try await onComplete()
+        } catch {
+            errorMessage = "We couldn't finish setting up your profile. Please try again."
         }
     }
 }

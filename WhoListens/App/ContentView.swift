@@ -1,15 +1,9 @@
 import SwiftUI
 
 struct ContentView: View {
-    private enum SessionState {
-        case loading
-        case signedIn
-        case signedOut
-    }
+    private enum SessionState { case loading, signedIn, signedOut }
 
     @State private var sessionState: SessionState = .loading
-    @State private var artworkReady = false
-    @State private var hasStarted = false
     @AppStorage("hasAuthenticatedBefore") private var hasAuthenticatedBefore = false
     @AppStorage("displayName") private var savedName = ""
     @AppStorage("pendingBirthMonth") private var pendingBirthMonth = 0
@@ -19,37 +13,13 @@ struct ContentView: View {
         Group {
             switch sessionState {
             case .loading:
-                AppGradients.welcome
-                    .ignoresSafeArea()
+                Color(red: 26 / 255, green: 26 / 255, blue: 26 / 255).ignoresSafeArea()
                     .overlay { ProgressView().tint(.white) }
             case .signedIn:
-                NavigationStack {
-                    HomeView()
-                }
+                SignedInOnboardingView()
             case .signedOut:
-                if artworkReady {
-                    if hasAuthenticatedBefore {
-                        NavigationStack {
-                            AuthView()
-                        }
-                    } else {
-                        NavigationStack {
-                            welcomePage { hasStarted = true }
-                                .navigationDestination(isPresented: $hasStarted) {
-                                    AgeConfirmationView()
-                                }
-                        }
-                    }
-                } else {
-                    AppGradients.welcome
-                        .ignoresSafeArea()
-                        .overlay { ProgressView().tint(.white) }
-                }
+                AuthView()
             }
-        }
-        .task {
-            await SpotifyArtworkStore.shared.preload()
-            artworkReady = true
         }
         .task {
             for await (event, session) in supabase.auth.authStateChanges {
@@ -57,13 +27,11 @@ struct ContentView: View {
                     savedName = ""
                     pendingBirthMonth = 0
                     pendingBirthYear = 0
-                    hasStarted = false
                     sessionState = .signedOut
                 } else if let session, !session.isExpired {
                     hasAuthenticatedBefore = true
                     sessionState = .signedIn
                 } else if event == .initialSession {
-                    // A stored session may need a refresh before it can grant access.
                     if let refreshed = try? await supabase.auth.session, !refreshed.isExpired {
                         hasAuthenticatedBefore = true
                         sessionState = .signedIn
@@ -76,45 +44,96 @@ struct ContentView: View {
             }
         }
     }
+}
 
-    private func welcomePage(start: @escaping () -> Void) -> some View {
-        GeometryReader { geometry in
-            let width = geometry.size.width.isFinite ? max(0, geometry.size.width) : 0
-            let height = geometry.size.height.isFinite ? max(0, geometry.size.height) : 0
+private struct SignedInOnboardingView: View {
+    private enum Destination { case loading, profileDetails, settingUp, home, failed }
 
-            ZStack {
-                AppGradients.welcome
-                    .ignoresSafeArea()
+    @State private var destination: Destination = .loading
+    @AppStorage("displayName") private var savedName = ""
+    @AppStorage("pendingBirthMonth") private var pendingBirthMonth = 0
+    @AppStorage("pendingBirthYear") private var pendingBirthYear = 0
 
-                welcomeTitle
-                    .position(x: width / 2, y: height * 0.48)
-
-                Button(action: start) {
-                    Text("Get Started!")
-                        .font(AppTypography.body)
-                        .foregroundStyle(.black)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, AppSpacing.medium)
-                        .background(.white, in: Capsule())
-                        .shadow(color: .black.opacity(0.25), radius: 8, y: 5)
+    var body: some View {
+        NavigationStack {
+            Group {
+                switch destination {
+                case .loading:
+                    Color(red: 26 / 255, green: 26 / 255, blue: 26 / 255).ignoresSafeArea()
+                        .overlay { ProgressView().tint(.white) }
+                case .profileDetails:
+                    AgeConfirmationView(onFinished: { destination = .settingUp })
+                case .settingUp:
+                    SettingUpView(onComplete: saveProfile)
+                case .home:
+                    HomeView()
+                case .failed:
+                    VStack(spacing: 16) {
+                        Text("We couldn't load your profile.")
+                        Button("Try again") { Task { await loadProfile() } }
+                            .buttonStyle(PrimaryActionStyle())
+                    }
+                    .padding(24)
                 }
-                .buttonStyle(.plain)
-                .padding(.horizontal, AppSpacing.xLarge)
-                .padding(.bottom, AppSpacing.xLarge)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
         }
-        .toolbar(.hidden, for: .navigationBar)
+        .task { await loadProfile() }
     }
 
-    private var welcomeTitle: some View {
-        Text("Who Listens?")
-            .font(AppTypography.display)
-            .foregroundStyle(AppColors.textOnBrand)
-            .multilineTextAlignment(.center)
-            .minimumScaleFactor(0.7)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, AppSpacing.large)
+    @MainActor
+    private func loadProfile() async {
+        destination = .loading
+        do {
+            let session = try await supabase.auth.session
+            let existing: Profile? = try await supabase.from("profiles")
+                .select("id, display_name, birth_month, birth_year, avatar_path")
+                .eq("id", value: session.user.id.uuidString)
+                .maybeSingle()
+                .execute()
+                .value
+            destination = existing == nil ? .profileDetails : .home
+        } catch {
+            destination = .failed
+        }
     }
 
+    @MainActor
+    private func saveProfile() async throws {
+        let name = String(savedName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(20))
+        guard !name.isEmpty, (1...12).contains(pendingBirthMonth), pendingBirthYear >= 1900 else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        let session = try await supabase.auth.session
+        let profile: Profile = try await supabase.from("profiles")
+            .upsert(OnboardingProfile(
+                id: session.user.id,
+                displayName: name,
+                birthMonth: pendingBirthMonth,
+                birthYear: pendingBirthYear
+            ))
+            .select("id, display_name, birth_month, birth_year, avatar_path")
+            .single()
+            .execute()
+            .value
+        // Photo is optional. HomeView can retry upload if it fails here.
+        _ = try? await ProfilePhotoService.uploadPending(for: profile.id)
+        pendingBirthMonth = 0
+        pendingBirthYear = 0
+        try? await Task.sleep(for: .milliseconds(700))
+        destination = .home
+    }
+}
+
+private struct OnboardingProfile: Encodable {
+    let id: UUID
+    let displayName: String
+    let birthMonth: Int
+    let birthYear: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case displayName = "display_name"
+        case birthMonth = "birth_month"
+        case birthYear = "birth_year"
+    }
 }

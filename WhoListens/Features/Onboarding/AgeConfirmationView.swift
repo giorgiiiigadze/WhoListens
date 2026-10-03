@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AgeConfirmationView: View {
     var onBack: (() -> Void)? = nil
+    var onFinished: () -> Void = {}
     @AppStorage("pendingBirthMonth") private var pendingBirthMonth = 0
     @AppStorage("pendingBirthYear") private var pendingBirthYear = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -19,7 +20,7 @@ struct AgeConfirmationView: View {
     var body: some View {
         ZStack {
             if didContinue {
-                DisplayNameView(onBack: { didContinue = false })
+                DisplayNameView(onBack: { didContinue = false }, onFinished: onFinished)
                     .transition(OnboardingMotion.transition(reduceMotion: reduceMotion))
             } else {
                 ageContent

@@ -421,6 +421,7 @@ struct HomeView: View {
 
     @MainActor
     private func logOut(showOnboarding: Bool = false) async {
+        SpotifyAppAuthenticator.shared.clearSession()
         guard !isSigningOut else { return }
         isSigningOut = true
         defer { isSigningOut = false }

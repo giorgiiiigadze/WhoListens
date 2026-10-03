@@ -16,6 +16,9 @@ struct ProfileView: View {
     @State private var isUpdatingPhoto = false
     @State private var photoError: String?
     @State private var playlists: [SpotifyPlaylist] = []
+    @State private var savedTracks: [SpotifySavedTrack] = []
+    @State private var savedTracksError: String?
+    @State private var savedTracksNeedsConnection = false
     @State private var isLoadingPlaylists = true
     @State private var isConnectingSpotify = false
     @State private var playlistNeedsConnection = false
@@ -236,7 +239,7 @@ struct ProfileView: View {
                 ProgressView("Loading playlists…")
                     .tint(.white)
             } else if playlistNeedsConnection {
-                Text("Connect Spotify to see your playlists.")
+                Text("Connect Spotify to see your playlists and saved songs.")
                     .font(.system(size: 15))
                     .foregroundStyle(.white.opacity(0.7))
                 if let playlistError {
@@ -274,11 +277,15 @@ struct ProfileView: View {
                     .foregroundStyle(.white.opacity(0.7))
                 Button("Retry") { Task { await loadPlaylists() } }
                     .font(.system(size: 15, weight: .semibold))
-            } else if playlists.isEmpty {
-                Text("No playlists yet.")
-                    .font(.system(size: 15))
-                    .foregroundStyle(.white.opacity(0.7))
             } else {
+                Text("PLAYLISTS")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.6))
+                if playlists.isEmpty {
+                    Text("No playlists yet.")
+                        .font(.system(size: 15))
+                        .foregroundStyle(.white.opacity(0.7))
+                }
                 ForEach(playlists) { playlist in
                     Button {
                         if let url = playlist.spotifyURL { openURL(url) }
@@ -290,6 +297,33 @@ struct ProfileView: View {
                     if playlist.id != playlists.last?.id {
                         Divider().overlay(.white.opacity(0.15))
                     }
+                }
+                Divider().overlay(.white.opacity(0.2))
+                Text("SAVED SONGS")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.6))
+                if let savedTracksError {
+                    Text(savedTracksError)
+                        .font(.system(size: 15))
+                        .foregroundStyle(.white.opacity(0.7))
+                    if savedTracksNeedsConnection {
+                        Button("Allow saved songs") { Task { await connectSpotify() } }
+                            .font(.system(size: 15, weight: .semibold))
+                            .disabled(isConnectingSpotify)
+                    }
+                } else if savedTracks.isEmpty {
+                    Text("No saved songs yet.")
+                        .font(.system(size: 15))
+                        .foregroundStyle(.white.opacity(0.7))
+                }
+                ForEach(savedTracks) { track in
+                    Button {
+                        if let url = track.spotifyURL { openURL(url) }
+                    } label: {
+                        savedTrackRow(track)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(track.spotifyURL == nil)
                 }
             }
             if let email {
@@ -339,13 +373,52 @@ struct ProfileView: View {
         .contentShape(Rectangle())
     }
 
+    private func savedTrackRow(_ track: SpotifySavedTrack) -> some View {
+        HStack(spacing: 12) {
+            AsyncImage(url: track.artworkURL) { image in
+                image.resizable().scaledToFill()
+            } placeholder: {
+                Image(systemName: "music.note")
+                    .foregroundStyle(.white.opacity(0.55))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(.white.opacity(0.1))
+            }
+            .frame(width: 48, height: 48)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(track.name)
+                    .font(.system(size: 16, weight: .semibold))
+                    .lineLimit(1)
+                Text(track.artistNames)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            if track.spotifyURL != nil {
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
     @MainActor
     private func loadPlaylists() async {
         isLoadingPlaylists = true
         playlistError = nil
         defer { isLoadingPlaylists = false }
         do {
-            guard let token = try await supabase.auth.session.providerToken else {
+            let nativeToken = try await SpotifyAppAuthenticator.shared.accessToken()
+            let token: String?
+            if let nativeToken {
+                token = nativeToken
+            } else {
+                token = try await supabase.auth.session.providerToken
+            }
+            guard let token else {
                 playlistNeedsConnection = true
                 return
             }
@@ -359,6 +432,19 @@ struct ProfileView: View {
     private func fetchPlaylists(token: String) async throws {
         do {
             playlists = try await SpotifyPlaylistService.playlists(providerToken: token)
+            do {
+                savedTracks = try await SpotifySavedTrackService.recent(providerToken: token)
+                savedTracksError = nil
+                savedTracksNeedsConnection = false
+            } catch SpotifyPlaylistError.authorizationRequired {
+                savedTracks = []
+                savedTracksError = "Spotify needs permission to show saved songs."
+                savedTracksNeedsConnection = true
+            } catch {
+                savedTracks = []
+                savedTracksError = "Could not load saved songs right now."
+                savedTracksNeedsConnection = false
+            }
             playlistNeedsConnection = false
             playlistError = nil
         } catch SpotifyPlaylistError.authorizationRequired {
@@ -372,11 +458,7 @@ struct ProfileView: View {
         isConnectingSpotify = true
         defer { isConnectingSpotify = false }
         do {
-            let session = try await SpotifyPlaylistService.connect()
-            guard let token = session.providerToken else {
-                playlistError = "Spotify did not provide access to playlists. Please try again."
-                return
-            }
+            let token = try await SpotifyAppAuthenticator.shared.connect()
             try await fetchPlaylists(token: token)
         } catch {
             if (error as? ASWebAuthenticationSessionError)?.code != .canceledLogin {

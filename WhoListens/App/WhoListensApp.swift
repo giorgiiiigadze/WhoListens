@@ -6,6 +6,9 @@ struct WhoListensApp: App {
         WindowGroup {
             ContentView()
                 .preferredColorScheme(.light)
+                .onOpenURL { url in
+                    SpotifyAppAuthenticator.shared.handleCallback(url)
+                }
         }
     }
 }

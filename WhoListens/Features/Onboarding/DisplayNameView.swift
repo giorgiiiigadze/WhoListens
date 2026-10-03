@@ -2,12 +2,11 @@ import SwiftUI
 
 struct DisplayNameView: View {
     var onBack: (() -> Void)? = nil
+    var onFinished: () -> Void = {}
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("displayName") private var savedName = ""
     @State private var name = ""
     @State private var showPhoto = false
-    @State private var showSetup = false
-    @State private var showAuth = false
     @FocusState private var nameIsFocused: Bool
 
     private var trimmedName: String {
@@ -16,18 +15,10 @@ struct DisplayNameView: View {
 
     var body: some View {
         ZStack {
-            if showAuth {
-                AuthView()
-                    .transition(OnboardingMotion.transition(reduceMotion: reduceMotion))
-            } else if showSetup {
-                SettingUpView {
-                    showAuth = true
-                }
-                    .transition(OnboardingMotion.transition(reduceMotion: reduceMotion))
-            } else if showPhoto {
+            if showPhoto {
                 ProfilePhotoView(
                     onBack: { showPhoto = false },
-                    onContinue: { showSetup = true }
+                    onContinue: onFinished
                 )
                 .transition(OnboardingMotion.transition(reduceMotion: reduceMotion))
             } else {
@@ -35,8 +26,6 @@ struct DisplayNameView: View {
                     .transition(OnboardingMotion.transition(reduceMotion: reduceMotion))
             }
         }
-        .animation(OnboardingMotion.animation(reduceMotion: reduceMotion), value: showAuth)
-        .animation(OnboardingMotion.animation(reduceMotion: reduceMotion), value: showSetup)
         .animation(OnboardingMotion.animation(reduceMotion: reduceMotion), value: showPhoto)
     }
 
