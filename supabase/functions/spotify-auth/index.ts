@@ -90,6 +90,42 @@ async function refresh(handle: string) {
   return json({ access_token: token.access_token, expires_in: token.expires_in });
 }
 
+// Issue a short-lived Spotify token only for the WhoListens user that owns the
+// stored connection. The client never needs another Spotify authorization to
+// refresh a healthy connection.
+async function access(request: Request) {
+  const authorization = request.headers.get("authorization") ?? "";
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  if (!match) return json({ error: "WhoListens session required" }, 401);
+
+  const { data: userData, error: userError } = await db.auth.getUser(match[1]);
+  if (userError || !userData.user) return json({ error: "WhoListens session required" }, 401);
+
+  const { data: account, error: accountError } = await db.from("spotify_accounts")
+    .select("spotify_id, refresh_token")
+    .eq("user_id", userData.user.id)
+    .maybeSingle();
+  if (accountError) throw accountError;
+  if (!account?.refresh_token) return json({ error: "Spotify connection unavailable" }, 401);
+
+  const token = await spotifyToken(new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: account.refresh_token,
+  }));
+  if (typeof token.access_token !== "string" || !token.access_token ||
+      typeof token.expires_in !== "number" || token.expires_in <= 0) {
+    throw new Error("Spotify returned invalid refresh credentials");
+  }
+  if (token.refresh_token) {
+    const { error: updateError } = await db.from("spotify_accounts")
+      .update({ refresh_token: token.refresh_token, updated_at: new Date().toISOString() })
+      .eq("spotify_id", account.spotify_id)
+      .eq("user_id", userData.user.id);
+    if (updateError) throw updateError;
+  }
+  return json({ access_token: token.access_token, expires_in: token.expires_in, spotify_id: account.spotify_id });
+}
+
 async function exchange(accessToken: string, refreshHandle: string) {
   const profile = await spotifyMe(accessToken);
   if (!profile.email) return json({ error: "Spotify email permission is required" }, 400);
@@ -133,6 +169,7 @@ Deno.serve(async (request) => {
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
   const path = new URL(request.url).pathname.split("/").at(-1);
   try {
+    if (path === "access") return await access(request);
     if (path === "swap" || path === "refresh") {
       const form = await request.formData();
       const value = form.get(path === "swap" ? "code" : "refresh_token");

@@ -21,6 +21,7 @@ private enum MainTab: Hashable {
 }
 
 struct HomeView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedTab: MainTab = .home
     @State private var profile: Profile?
     @State private var avatarImage: UIImage?
@@ -31,10 +32,29 @@ struct HomeView: View {
     @State private var profileError: String?
     @State private var isSigningOut = false
     @State private var profileSkeletonPulse = false
-    @ObservedObject private var artworkStore = SpotifyArtworkStore.shared
+    @State private var homeSkeletonPulse = false
+    @State private var showJoinGame = false
+    @State private var activeRoom: GameRoom?
+    @State private var isCreatingRoom = false
+    @State private var partyError: String?
+    @State private var albumArtworkURLs: [URL] = []
     @AppStorage("lastRoomCode") private var lastRoomCode = ""
 
-    private let background = AppColors.background
+    private let background = Color.black
+
+    init(
+        preloadedProfile: Profile,
+        preloadedAvatarImage: UIImage?,
+        preloadedEmail: String?,
+        preloadedJoinedAt: Date?
+    ) {
+        _profile = State(initialValue: preloadedProfile)
+        _avatarImage = State(initialValue: preloadedAvatarImage)
+        _email = State(initialValue: preloadedEmail)
+        _joinedAt = State(initialValue: preloadedJoinedAt)
+        _isLoading = State(initialValue: false)
+        _albumArtworkURLs = State(initialValue: Self.albumCovers(for: preloadedProfile.id))
+    }
 
     private var age: Int? {
         guard let profile else { return nil }
@@ -88,79 +108,70 @@ struct HomeView: View {
         .toolbarBackground(background, for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)
         .preferredColorScheme(.dark)
-        .task { await loadProfile() }
+        .task(id: selectedTab) {
+            guard selectedTab == .home, let profile else { return }
+            await SpotifyProfilePreload.shared.preload(for: profile.id)
+            albumArtworkURLs = Self.albumCovers(for: profile.id)
+        }
     }
 
     private var homePage: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 26) {
-                header
+        ZStack {
+            AlbumMotionBackground(urls: albumArtworkURLs, reduceMotion: reduceMotion)
 
+            VStack(spacing: 18) {
                 if isLoading {
-                    ProgressView("Getting your space ready…")
-                        .tint(.white)
-                        .frame(maxWidth: .infinity, minHeight: 240)
-                } else if let profileError {
-                    VStack(spacing: 14) {
-                        Text(profileError)
-                        Button("Try again") { Task { await loadProfile() } }
-                            .fontWeight(.semibold)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 240)
-                } else if let profile {
-                    Text("Hey, \(profile.displayName).")
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.75)
+                    homeSkeleton
+                } else {
+                    header
 
-                    partyHero
-
-                    VStack(alignment: .leading, spacing: 14) {
-                        sectionHeading("Your space", subtitle: "Pick up wherever the music takes you.")
-                        HStack(spacing: 12) {
-                            shortcut(title: "Play", detail: "Join a room", symbol: "person.2.fill", tint: AppColors.mintAccent) {
-                                selectedTab = .play
-                            }
-                            shortcut(title: "Music", detail: "Your library", symbol: "music.note", tint: Color(red: 0.20, green: 0.80, blue: 0.56)) {
-                                selectedTab = .music
-                            }
+                    if let profileError {
+                        Spacer()
+                        VStack(spacing: 14) {
+                            Text(profileError)
+                            Button("Try again") { Task { await loadProfile() } }
+                                .fontWeight(.semibold)
                         }
-                    }
+                        Spacer()
+                    } else if let profile {
+                        Spacer(minLength: 24)
+                        partyHero(profile: profile)
+                        Spacer(minLength: 24)
 
-                    if !lastRoomCode.isEmpty {
-                        Button { selectedTab = .play } label: {
-                            HStack(spacing: 14) {
-                                Image(systemName: "arrow.uturn.backward.circle.fill")
-                                    .font(.system(size: 28))
-                                    .foregroundStyle(AppColors.warmOrange)
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Your last room").font(.system(size: 17, weight: .semibold))
-                                    Text("Code \(lastRoomCode) · Tap to resume")
-                                        .font(.system(size: 14))
-                                        .foregroundStyle(.white.opacity(0.6))
+                        if !lastRoomCode.isEmpty {
+                            Button { selectedTab = .play } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "arrow.uturn.backward.circle.fill")
+                                        .foregroundStyle(AppColors.warmOrange)
+                                    Text("Your last room · \(lastRoomCode)")
+                                        .font(.system(size: 15, weight: .semibold))
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundStyle(.white.opacity(0.5))
                                 }
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 13, weight: .bold))
-                                    .foregroundStyle(.white.opacity(0.5))
+                                .padding(15)
+                                .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 18))
                             }
-                            .padding(18)
-                            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 22))
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
-                    }
 
-                    musicPreview
+                        partyActions
+                    }
                 }
             }
             .padding(.horizontal, 22)
             .padding(.top, 22)
-            .padding(.bottom, 30)
+            .padding(.bottom, 18)
         }
         .background(background.ignoresSafeArea())
         .foregroundStyle(.white)
         .toolbar(.hidden, for: .navigationBar)
-        .task { await artworkStore.preload() }
+        .navigationDestination(isPresented: $showJoinGame) { JoinGameView() }
+        .navigationDestination(item: $activeRoom) { room in
+            RoomSessionView(room: room)
+                .toolbar(.hidden, for: .tabBar)
+        }
     }
 
     private var loadingProfile: some View {
@@ -254,118 +265,156 @@ struct HomeView: View {
         }
     }
 
-    private var partyHero: some View {
-        ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: 30)
-                .fill(LinearGradient(
-                    colors: [Color(red: 0.25, green: 0.21, blue: 0.49), Color(red: 0.12, green: 0.39, blue: 0.39), Color(red: 0.08, green: 0.30, blue: 0.28)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ))
-
-            Circle()
-                .strokeBorder(.white.opacity(0.18), lineWidth: 24)
-                .frame(width: 210, height: 210)
-                .offset(x: 210, y: -62)
-
-            VStack(alignment: .leading, spacing: 16) {
-                Label("THE GOOD PART", systemImage: "sparkles")
-                    .font(.system(size: 12, weight: .bold))
-                    .tracking(1.4)
-                    .foregroundStyle(.white.opacity(0.85))
-
-                Text("Your music.\nYour people.")
-                    .font(.system(size: 33, weight: .heavy, design: .rounded))
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text("Make a room and see who knows your taste best.")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.87))
-
-                Button { selectedTab = .play } label: {
-                    HStack(spacing: 8) {
-                        Text("Let’s play")
-                        Image(systemName: "arrow.up.right")
-                    }
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(.black)
-                    .padding(.horizontal, 20)
-                    .frame(height: 46)
-                    .background(.white, in: Capsule())
+    private func partyHero(profile: Profile) -> some View {
+        VStack(spacing: 12) {
+            Group {
+                if let avatarImage {
+                    Image(uiImage: avatarImage).resizable().scaledToFill()
+                } else {
+                    Text(String(profile.displayName.prefix(1)).uppercased())
+                        .font(.system(size: 42, weight: .bold, design: .rounded))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(AppColors.electricPurple.opacity(0.55))
                 }
-                .buttonStyle(.plain)
-                .padding(.top, 3)
             }
-            .padding(26)
+            .frame(width: 116, height: 116)
+            .clipShape(Circle())
+
+            Text("@\(profile.displayName)")
+                .font(.system(size: 18, weight: .semibold, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
-        .frame(maxWidth: .infinity, minHeight: 285, alignment: .topLeading)
-        .clipShape(RoundedRectangle(cornerRadius: 30))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 20)
+        .frame(width: 186, height: 230)
+        .background(Color(white: 0.12).opacity(0.94), in: RoundedRectangle(cornerRadius: 22))
+        .frame(maxWidth: .infinity)
     }
 
-    private var musicPreview: some View {
-        Button { selectedTab = .music } label: {
-            HStack(spacing: 16) {
-                HStack(spacing: -26) {
-                    ForEach(0..<3, id: \.self) { index in
-                        Group {
-                            if artworkStore.images.indices.contains(index), let image = artworkStore.images[index] {
-                                Image(uiImage: image).resizable().scaledToFill()
-                            } else {
-                                Image(systemName: "music.note")
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                    .background(AppColors.electricPurple)
-                            }
-                        }
-                        .frame(width: 68, height: 68)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(background, lineWidth: 3))
-                    }
-                }
-                .frame(width: 152)
-
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Your music")
-                        .font(.system(size: 18, weight: .bold))
-                    Text("Playlists & saved songs")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.white.opacity(0.6))
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "arrow.up.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.6))
+    private var homeSkeleton: some View {
+        VStack(spacing: 18) {
+            HStack {
+                Text("Who Listens?")
+                    .font(AppTypography.title)
+                Spacer()
+                Circle()
+                    .fill(.white.opacity(0.17))
+                    .frame(width: 44, height: 44)
             }
-            .padding(18)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 24))
-        }
-        .buttonStyle(.plain)
-    }
 
-    private func sectionHeading(_ title: String, subtitle: String) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(title).font(.system(size: 23, weight: .bold, design: .rounded))
-            Text(subtitle).font(.system(size: 14)).foregroundStyle(.white.opacity(0.58))
+            Spacer(minLength: 24)
+
+            VStack(spacing: 14) {
+                Circle()
+                    .fill(.white.opacity(0.16))
+                    .frame(width: 116, height: 116)
+                Capsule()
+                    .fill(.white.opacity(0.16))
+                    .frame(width: 148, height: 18)
+            }
+            .frame(width: 186, height: 230)
+            .background(Color(white: 0.12), in: RoundedRectangle(cornerRadius: 22))
+            .frame(maxWidth: .infinity)
+
+            Spacer(minLength: 24)
+
+            if !lastRoomCode.isEmpty {
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(.white.opacity(0.12))
+                    .frame(height: 50)
+            }
+
+            VStack(spacing: 7) {
+                Capsule().fill(.white.opacity(0.12)).frame(width: 250, height: 13)
+                Capsule().fill(.white.opacity(0.12)).frame(width: 195, height: 13)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.bottom, 8)
+
+            VStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 17)
+                    .fill(.white.opacity(0.16))
+                    .frame(height: 62)
+                RoundedRectangle(cornerRadius: 17)
+                    .fill(.white.opacity(0.12))
+                    .frame(height: 62)
+            }
+        }
+        .opacity(homeSkeletonPulse ? 0.55 : 1)
+        .task {
+            guard !reduceMotion else { return }
+            try? await Task.sleep(for: .milliseconds(100))
+            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
+                homeSkeletonPulse = true
+            }
         }
     }
 
-    private func shortcut(title: String, detail: String, symbol: String, tint: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 10) {
-                Image(systemName: symbol)
-                    .font(.system(size: 24, weight: .medium))
-                    .foregroundStyle(tint)
-                    .frame(height: 36)
-                Spacer(minLength: 2)
-                Text(title).font(.system(size: 19, weight: .bold))
-                Text(detail).font(.system(size: 13)).foregroundStyle(.white.opacity(0.6))
+    private var partyActions: some View {
+        VStack(spacing: 10) {
+            Text("Join your friend's game with their PIN, or start your own.")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.white.opacity(0.82))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 22)
+                .padding(.bottom, 8)
+
+            Button { showJoinGame = true } label: {
+                Text("Join a party")
+                    .font(AppTypography.body)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 62)
+                    .background(LinearGradient(
+                        stops: [
+                            .init(color: Color(red: 203 / 255, green: 3 / 255, blue: 3 / 255), location: 0),
+                            .init(color: Color(red: 0.47, green: 0.16, blue: 0.13), location: 0.32),
+                            .init(color: Color(red: 0.82, green: 0.34, blue: 0.25), location: 0.72),
+                            .init(color: Color(red: 0.47, green: 0.16, blue: 0.13), location: 1),
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    ), in: RoundedRectangle(cornerRadius: 17))
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: 118)
-            .padding(18)
-            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 24))
+            .buttonStyle(.plain)
+
+            Button { Task { await createRoom() } } label: {
+                Group {
+                    if isCreatingRoom { ProgressView().tint(.black) }
+                    else { Text("Create a party") }
+                }
+                .font(AppTypography.body)
+                .foregroundStyle(.black)
+                .frame(maxWidth: .infinity)
+                .frame(height: 62)
+                .background(.white, in: RoundedRectangle(cornerRadius: 17))
+            }
+            .buttonStyle(.plain)
+            .disabled(isCreatingRoom)
+
+            if let partyError {
+                Text(partyError)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color(red: 1, green: 0.55, blue: 0.55))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
-        .buttonStyle(.plain)
+    }
+
+    @MainActor
+    private func createRoom() async {
+        guard !isCreatingRoom else { return }
+        isCreatingRoom = true
+        defer { isCreatingRoom = false }
+        do {
+            let room = try await GameBackend.create()
+            lastRoomCode = room.code
+            partyError = nil
+            activeRoom = room
+        } catch {
+            partyError = "Could not create a party. Please try again."
+        }
     }
 
     @MainActor
@@ -384,6 +433,12 @@ struct HomeView: View {
                 .value
             isLoadingPhoto = loaded.avatarPath != nil
             profile = loaded
+            albumArtworkURLs = Self.albumCovers(for: loaded.id)
+            Task {
+                await SpotifyProfilePreload.shared.preload(for: loaded.id)
+                guard profile?.id == loaded.id else { return }
+                albumArtworkURLs = Self.albumCovers(for: loaded.id)
+            }
             await ProfilePhotoService.cleanupReplacedPhotos(for: loaded.id)
             try? await refreshPhoto()
             if let avatarPath = profile?.avatarPath {
@@ -397,6 +452,15 @@ struct HomeView: View {
             isLoadingPhoto = false
         }
         isLoading = false
+    }
+
+    private static func albumCovers(for userID: UUID) -> [URL] {
+        let recent = SpotifyProfilePreload.shared.recentlyPlayed(for: userID)?
+            .compactMap(\.track.artworkURL) ?? []
+        let saved = SpotifyProfilePreload.shared.savedTracks(for: userID)?
+            .compactMap(\.artworkURL) ?? []
+        var seen = Set<URL>()
+        return (recent + saved).filter { seen.insert($0).inserted }.prefix(8).map { $0 }
     }
 
     @MainActor
@@ -419,9 +483,86 @@ struct HomeView: View {
         guard !isSigningOut else { return }
         isSigningOut = true
         SpotifyAppAuthenticator.shared.clearSession()
+        SpotifyAccessService.shared.clear()
         SpotifyProfilePreload.shared.clear()
         PendingProfilePhoto.clear()
         try? await supabase.auth.signOut(scope: .local)
         isSigningOut = false
+    }
+}
+
+/// A few cached album covers drift slowly behind a dark scrim. Only their
+/// position animates, so the screen avoids per-frame image processing.
+private struct AlbumMotionBackground: View {
+    let urls: [URL]
+    let reduceMotion: Bool
+
+    private let placements: [(x: CGFloat, y: CGFloat, direction: CGFloat)] = [
+        (0.12, 0.16, 1), (0.84, 0.13, -1),
+        (0.10, 0.47, -1), (0.91, 0.46, 1),
+        (0.16, 0.60, 1), (0.84, 0.59, -1),
+        (0.39, 0.70, -1), (0.67, 0.69, 1),
+    ]
+
+    var body: some View {
+        GeometryReader { geometry in
+            let coverSize = min(geometry.size.width * 0.27, 112)
+            ZStack {
+                Color.black
+
+                ForEach(Array(urls.prefix(placements.count).enumerated()), id: \.offset) { index, url in
+                    DriftingAlbumCover(
+                        url: url,
+                        size: coverSize,
+                        direction: placements[index].direction,
+                        reduceMotion: reduceMotion
+                    )
+                        .position(
+                            x: geometry.size.width * placements[index].x,
+                            y: geometry.size.height * placements[index].y
+                        )
+                }
+
+                Color.black.opacity(0.48)
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipped()
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+}
+
+private struct DriftingAlbumCover: View {
+    let url: URL
+    let size: CGFloat
+    let direction: CGFloat
+    let reduceMotion: Bool
+
+    @State private var drifting = false
+
+    var body: some View {
+        SpotifyCachedArtwork(url: url, size: size, cornerRadius: 14)
+            .blur(radius: 1.5)
+            .opacity(0.8)
+            .offset(y: (drifting ? 28 : -28) * direction)
+            .task(id: reduceMotion) {
+                guard !reduceMotion else {
+                    withTransaction(Transaction(animation: nil)) {
+                        drifting = false
+                    }
+                    return
+                }
+                // Start after the cover's first frame. Keep the animation alive
+                // across tab switches so it never snaps back to its start.
+                do {
+                    try await Task.sleep(for: .milliseconds(150))
+                } catch {
+                    return
+                }
+                withAnimation(.easeInOut(duration: 20).repeatForever(autoreverses: true)) {
+                    drifting = true
+                }
+            }
     }
 }

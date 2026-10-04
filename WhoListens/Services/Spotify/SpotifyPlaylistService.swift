@@ -37,7 +37,7 @@ enum SpotifyPlaylistError: Error {
 }
 
 enum SpotifyPlaylistService {
-    static let scopes = "user-read-email playlist-read-private playlist-read-collaborative user-library-read user-read-recently-played"
+    static let scopes = "user-read-email playlist-read-private playlist-read-collaborative user-library-read user-read-recently-played user-top-read"
 
     static func connect() async throws -> Session {
         try await supabase.auth.signInWithOAuth(

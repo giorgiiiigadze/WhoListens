@@ -105,7 +105,7 @@ struct ProfileSettingsView: View {
         isRefreshingSpotify = true
         defer { isRefreshingSpotify = false }
         do {
-            _ = try await SpotifyAppAuthenticator.shared.connect()
+            _ = try await SpotifyAccessService.shared.connect()
             spotifyMessage = "Spotify access is up to date."
         } catch {
             spotifyMessage = "Couldn’t refresh Spotify access. Please try again."

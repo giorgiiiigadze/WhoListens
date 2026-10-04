@@ -51,14 +51,23 @@ private struct SignedInOnboardingView: View {
     private enum Destination { case loading, profileDetails, settingUp, home, failed }
 
     @State private var destination: Destination = .loading
+    @State private var homeProfile: Profile?
+    @State private var homeAvatarImage: UIImage?
+    @State private var homeEmail: String?
+    @State private var homeJoinedAt: Date?
     @AppStorage("displayName") private var savedName = ""
     @AppStorage("pendingBirthMonth") private var pendingBirthMonth = 0
     @AppStorage("pendingBirthYear") private var pendingBirthYear = 0
 
     var body: some View {
         Group {
-            if case .home = destination {
-                HomeView()
+            if case .home = destination, let homeProfile {
+                HomeView(
+                    preloadedProfile: homeProfile,
+                    preloadedAvatarImage: homeAvatarImage,
+                    preloadedEmail: homeEmail,
+                    preloadedJoinedAt: homeJoinedAt
+                )
             } else {
                 NavigationStack {
                     onboardingContent
@@ -103,6 +112,14 @@ private struct SignedInOnboardingView: View {
                 .value
             if let existing {
                 await SpotifyProfilePreload.shared.preload(for: existing.id)
+                homeAvatarImage = if let path = existing.avatarPath {
+                    try? await ProfilePhotoService.download(path: path)
+                } else {
+                    nil
+                }
+                homeEmail = session.user.email
+                homeJoinedAt = session.user.createdAt
+                homeProfile = existing
                 destination = .home
             } else {
                 destination = .profileDetails
@@ -119,7 +136,7 @@ private struct SignedInOnboardingView: View {
             throw CocoaError(.fileReadCorruptFile)
         }
         let session = try await supabase.auth.session
-        let profile: Profile = try await supabase.from("profiles")
+        var profile: Profile = try await supabase.from("profiles")
             .upsert(OnboardingProfile(
                 id: session.user.id,
                 displayName: name,
@@ -131,10 +148,26 @@ private struct SignedInOnboardingView: View {
             .execute()
             .value
         // Photo is optional. HomeView can retry upload if it fails here.
-        _ = try? await ProfilePhotoService.uploadPending(for: profile.id)
+        if let path = try? await ProfilePhotoService.uploadPending(for: profile.id) {
+            profile = Profile(
+                id: profile.id,
+                displayName: profile.displayName,
+                birthMonth: profile.birthMonth,
+                birthYear: profile.birthYear,
+                avatarPath: path
+            )
+        }
         pendingBirthMonth = 0
         pendingBirthYear = 0
         await SpotifyProfilePreload.shared.preload(for: profile.id)
+        homeAvatarImage = if let path = profile.avatarPath {
+            try? await ProfilePhotoService.download(path: path)
+        } else {
+            nil
+        }
+        homeEmail = session.user.email
+        homeJoinedAt = session.user.createdAt
+        homeProfile = profile
         destination = .home
     }
 }

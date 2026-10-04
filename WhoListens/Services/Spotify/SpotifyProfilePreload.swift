@@ -11,6 +11,8 @@ final class SpotifyProfilePreload {
     private(set) var savedTracks: [SpotifySavedTrack]?
     private(set) var recentlyPlayed: [SpotifyRecentlyPlayedItem]?
     private(set) var topArtists: [SpotifyTopArtist]?
+    private(set) var topTracks: [SpotifySavedTrack]?
+    private var loadedAt: Date?
     private var artwork: [URL: UIImage] = [:]
 
     private init() {}
@@ -20,27 +22,27 @@ final class SpotifyProfilePreload {
             clear()
             self.userID = userID
         }
+        if let loadedAt, Date().timeIntervalSince(loadedAt) < 180 { return }
         do {
-            let token: String?
-            if let nativeToken = try await SpotifyAppAuthenticator.shared.accessToken() {
-                token = nativeToken
-            } else {
-                token = try await supabase.auth.session.providerToken
-            }
+            let token = try await SpotifyAccessService.shared.accessToken()
             guard let token else { return }
 
-            if recentlyPlayed == nil {
-                recentlyPlayed = try? await SpotifyRecentlyPlayedService.recent(providerToken: token)
-            }
-            if topArtists == nil {
-                topArtists = try? await SpotifyTopArtistService.topArtists(providerToken: token)
-            }
-            if savedTracks == nil {
-                savedTracks = try? await SpotifySavedTrackService.recent(providerToken: token)
-            }
-            if playlists == nil {
-                playlists = try? await SpotifyPlaylistService.playlists(providerToken: token)
-            }
+            async let recentResult = try? await SpotifyRecentlyPlayedService.recent(providerToken: token)
+            async let artistResult = try? await SpotifyTopArtistService.topArtists(providerToken: token)
+            async let trackResult = try? await SpotifyTopTrackService.topTracks(providerToken: token)
+            async let savedResult = try? await SpotifySavedTrackService.recent(providerToken: token)
+            async let playlistResult = try? await SpotifyPlaylistService.playlists(providerToken: token)
+
+            let (recent, artists, tracks, saved, lists) = await (
+                recentResult, artistResult, trackResult, savedResult, playlistResult
+            )
+            guard self.userID == userID else { return }
+            recentlyPlayed = recent ?? recentlyPlayed
+            topArtists = artists ?? topArtists
+            topTracks = tracks ?? topTracks
+            savedTracks = saved ?? savedTracks
+            playlists = lists ?? playlists
+            loadedAt = Date()
             await warmArtwork(for: userID)
         } catch {
             // ProfileView retains its own retry and permission handling.
@@ -63,9 +65,23 @@ final class SpotifyProfilePreload {
         self.userID == userID ? topArtists : nil
     }
 
+    func topTracks(for userID: UUID) -> [SpotifySavedTrack]? {
+        self.userID == userID ? topTracks : nil
+    }
+
     func storeTopArtists(_ artists: [SpotifyTopArtist], for userID: UUID) {
         guard self.userID == userID else { return }
         topArtists = artists
+    }
+
+    func storeTopTracks(_ tracks: [SpotifySavedTrack], for userID: UUID) {
+        guard self.userID == userID else { return }
+        topTracks = tracks
+    }
+
+    func storeRecentlyPlayed(_ items: [SpotifyRecentlyPlayedItem], for userID: UUID) {
+        guard self.userID == userID else { return }
+        recentlyPlayed = items
     }
 
     func image(for url: URL?) -> UIImage? {
@@ -84,6 +100,7 @@ final class SpotifyProfilePreload {
 
     private func warmArtwork(for userID: UUID) async {
         let candidates = (recentlyPlayed?.prefix(3).compactMap(\.track.artworkURL) ?? [])
+            + (topTracks?.prefix(3).compactMap(\.artworkURL) ?? [])
             + (topArtists?.prefix(3).compactMap(\.artworkURL) ?? [])
             + (savedTracks?.prefix(6).compactMap(\.artworkURL) ?? [])
             + (playlists?.prefix(8).compactMap(\.artworkURL) ?? [])
@@ -113,6 +130,8 @@ final class SpotifyProfilePreload {
         savedTracks = nil
         recentlyPlayed = nil
         topArtists = nil
+        topTracks = nil
+        loadedAt = nil
         artwork = [:]
     }
 }

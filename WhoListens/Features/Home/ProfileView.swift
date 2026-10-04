@@ -28,13 +28,15 @@ struct ProfileView: View {
     @State private var playlistError: String?
     @State private var recentlyPlayed: [SpotifyRecentlyPlayedItem] = []
     @State private var topArtists: [SpotifyTopArtist] = []
+    @State private var topTracks: [SpotifySavedTrack] = []
     @State private var isLoadingTopArtists = true
+    @State private var isLoadingTopTracks = true
     @State private var topArtistsError: String?
+    @State private var topTracksError: String?
     @State private var isLoadingRecentlyPlayed = true
     @State private var recentNeedsPermission = false
     @State private var recentError: String?
     @State private var showsAllRecent = false
-    @AppStorage("recentHistoryUpgradeAttemptedForUserID") private var recentUpgradeAttemptedForUserID = ""
 
     init(
         profile: Profile,
@@ -110,9 +112,16 @@ struct ProfileView: View {
             Task { await updatePhoto(from: item) }
         }
         .task {
+            await SpotifyProfilePreload.shared.preload(for: profile.id)
             await loadPlaylists()
             await loadRecentlyPlayed()
             await loadTopArtists()
+            await loadTopTracks()
+        }
+        .refreshable {
+            await loadRecentlyPlayed(forceRefresh: true)
+            await loadTopArtists(forceRefresh: true)
+            await loadTopTracks(forceRefresh: true)
         }
     }
 
@@ -309,16 +318,16 @@ struct ProfileView: View {
                 Button(topArtistsError) { Task { await loadTopArtists(forceRefresh: true) } }
                     .font(.system(size: 14))
                     .padding(.vertical, 42)
-            } else if topArtists.isEmpty && fallbackArtists.isEmpty {
+            } else if topArtists.isEmpty {
                 Text("Your top artists will appear here as you listen on Spotify.")
                     .font(.system(size: 14)).foregroundStyle(.white.opacity(0.62))
                     .multilineTextAlignment(.center).padding(.vertical, 42).padding(.horizontal, 32)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 16) {
-                        ForEach(Array(displayArtists.enumerated()), id: \.element.name) { index, artist in
+                        ForEach(Array(topArtists.enumerated()), id: \.element.id) { index, artist in
                             VStack(spacing: 10) {
-                                SpotifyCachedArtwork(url: artist.artwork, size: 104, cornerRadius: 52)
+                                SpotifyCachedArtwork(url: artist.artworkURL, size: 104, cornerRadius: 52)
                                     .overlay(alignment: .bottomTrailing) {
                                         Text("\(index + 1)")
                                             .font(.system(size: 16, weight: .bold))
@@ -335,46 +344,40 @@ struct ProfileView: View {
         }
     }
 
-    private var displayArtists: [(name: String, artwork: URL?)] {
-        if !topArtists.isEmpty {
-            return topArtists.map { (name: $0.name, artwork: $0.artworkURL) }
-        }
-        return fallbackArtists
-    }
-
-    private var fallbackArtists: [(name: String, artwork: URL?)] {
-        var counts: [String: (plays: Int, artwork: URL?)] = [:]
-        for item in recentlyPlayed {
-            for artist in item.track.artists {
-                let current = counts[artist.name] ?? (0, item.track.artworkURL)
-                counts[artist.name] = (current.plays + 1, current.artwork ?? item.track.artworkURL)
-            }
-        }
-        let ranked: [(name: String, artwork: URL?, plays: Int)] = counts.map {
-            (name: $0.key, artwork: $0.value.artwork, plays: $0.value.plays)
-        }
-        let sorted = ranked.sorted { lhs, rhs in
-            if lhs.plays != rhs.plays { return lhs.plays > rhs.plays }
-            return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
-        }
-        return sorted.map { (name: $0.name, artwork: $0.artwork) }
-    }
-
     private var recapTracks: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ScrollView(.horizontal, showsIndicators: false) {
+            if isLoadingTopTracks {
                 HStack(spacing: 13) {
-                    ForEach(onRepeatTracks) { track in
+                    ForEach(0..<3, id: \.self) { _ in
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(.white.opacity(0.12))
+                            .frame(width: 126, height: 126)
+                    }
+                }
+                .padding(.horizontal, 20)
+            } else if let topTracksError {
+                Button(topTracksError) { Task { await loadTopTracks(forceRefresh: true) } }
+                    .font(.system(size: 14))
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 42)
+            } else if topTracks.isEmpty {
+                Text("Your top tracks will appear here as you listen on Spotify.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 42)
+            } else {
+              ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 13) {
+                    ForEach(topTracks) { track in
                         VStack(alignment: .leading, spacing: 7) {
                             SpotifyCachedArtwork(url: track.artworkURL, size: 126, cornerRadius: 2)
                             Text(track.name).font(.system(size: 15, weight: .semibold)).lineLimit(1)
                             Text(track.artistNames).font(.system(size: 13)).foregroundStyle(.white.opacity(0.58)).lineLimit(1)
                         }.frame(width: 126, alignment: .leading)
                     }
-                    if onRepeatTracks.isEmpty && !isLoadingRecentlyPlayed {
-                        Text("Your most-played songs will show up here.").font(.system(size: 14)).foregroundStyle(.white.opacity(0.58)).frame(width: 230, height: 126)
-                    }
                 }.padding(.horizontal, 20)
+              }
             }
         }.padding(.top, 4)
     }
@@ -384,18 +387,6 @@ struct ProfileView: View {
             Circle().fill(.white.opacity(0.12)).frame(width: 92, height: 92)
             Capsule().fill(.white.opacity(0.12)).frame(width: 70, height: 13)
         }.frame(maxWidth: .infinity)
-    }
-
-    private var onRepeatTracks: [SpotifySavedTrack] {
-        var counts: [String: (plays: Int, track: SpotifySavedTrack)] = [:]
-        for item in recentlyPlayed {
-            let current = counts[item.track.id] ?? (0, item.track)
-            counts[item.track.id] = (current.plays + 1, current.track)
-        }
-        return counts.values
-            .sorted(by: { lhs, rhs in lhs.plays > rhs.plays })
-            .prefix(8)
-            .map(\.track)
     }
 
     private func recentlyPlayedRow(_ item: SpotifyRecentlyPlayedItem) -> some View {
@@ -634,13 +625,7 @@ struct ProfileView: View {
         playlistError = nil
         defer { isLoadingPlaylists = false }
         do {
-            let nativeToken = try await SpotifyAppAuthenticator.shared.accessToken()
-            let token: String?
-            if let nativeToken {
-                token = nativeToken
-            } else {
-                token = try await supabase.auth.session.providerToken
-            }
+            let token = try await SpotifyAccessService.shared.accessToken()
             guard let token else {
                 playlistNeedsConnection = true
                 return
@@ -665,21 +650,12 @@ struct ProfileView: View {
         recentError = nil
         defer { isLoadingRecentlyPlayed = false }
         do {
-            let token: String?
-            if let nativeToken = try await SpotifyAppAuthenticator.shared.accessToken() {
-                token = nativeToken
-            } else {
-                token = try await supabase.auth.session.providerToken
-            }
+            let token = try await SpotifyAccessService.shared.accessToken()
             guard let token else {
                 recentNeedsPermission = true
-                await upgradeRecentPermissionOnce()
                 return
             }
             try await fetchRecentlyPlayed(token: token)
-            if recentNeedsPermission {
-                await upgradeRecentPermissionOnce()
-            }
         } catch SpotifyRecentlyPlayedError.unavailable(let message) {
             recentNeedsPermission = false
             recentError = message
@@ -701,19 +677,41 @@ struct ProfileView: View {
         topArtistsError = nil
         defer { isLoadingTopArtists = false }
         do {
-            let token: String?
-            if let nativeToken = try await SpotifyAppAuthenticator.shared.accessToken() {
-                token = nativeToken
-            } else {
-                token = try await supabase.auth.session.providerToken
+            guard let token = try await SpotifyAccessService.shared.accessToken() else {
+                topArtistsError = "Spotify music is unavailable. Tap to retry."
+                return
             }
-            guard let token else { return }
             try await fetchTopArtists(token: token)
         } catch SpotifyTopArtistError.permissionRequired {
-            // Existing Spotify grants may not include user-top-read. Keep the
-            // recap populated from listening history without interrupting the user.
+            topArtistsError = "Spotify has not granted top artists access."
         } catch {
-            if fallbackArtists.isEmpty { topArtistsError = "Couldn’t load top artists. Tap to retry." }
+            topArtistsError = "Couldn’t load top artists. Tap to retry."
+        }
+    }
+
+    @MainActor
+    private func loadTopTracks(forceRefresh: Bool = false) async {
+        if !forceRefresh, let cached = SpotifyProfilePreload.shared.topTracks(for: profile.id) {
+            topTracks = cached
+            topTracksError = nil
+            isLoadingTopTracks = false
+            return
+        }
+        isLoadingTopTracks = topTracks.isEmpty
+        topTracksError = nil
+        defer { isLoadingTopTracks = false }
+        do {
+            guard let token = try await SpotifyAccessService.shared.accessToken() else {
+                topTracksError = "Spotify music is unavailable. Tap to retry."
+                return
+            }
+            let tracks = try await SpotifyTopTrackService.topTracks(providerToken: token)
+            topTracks = tracks
+            SpotifyProfilePreload.shared.storeTopTracks(tracks, for: profile.id)
+        } catch SpotifyTopTrackError.permissionRequired {
+            topTracksError = "Spotify has not granted top tracks access."
+        } catch {
+            topTracksError = "Couldn’t load top tracks. Tap to retry."
         }
     }
 
@@ -726,17 +724,10 @@ struct ProfileView: View {
     }
 
     @MainActor
-    private func upgradeRecentPermissionOnce() async {
-        let userID = profile.id.uuidString
-        guard recentUpgradeAttemptedForUserID != userID else { return }
-        recentUpgradeAttemptedForUserID = userID
-        await connectSpotify()
-    }
-
-    @MainActor
     private func fetchRecentlyPlayed(token: String) async throws {
         do {
             recentlyPlayed = try await SpotifyRecentlyPlayedService.recent(providerToken: token)
+            SpotifyProfilePreload.shared.storeRecentlyPlayed(recentlyPlayed, for: profile.id)
             recentNeedsPermission = false
             recentError = nil
         } catch SpotifyRecentlyPlayedError.permissionRequired {
@@ -774,7 +765,7 @@ struct ProfileView: View {
         isConnectingSpotify = true
         defer { isConnectingSpotify = false }
         do {
-            let token = try await SpotifyAppAuthenticator.shared.connect()
+            let token = try await SpotifyAccessService.shared.connect()
             try? await fetchPlaylists(token: token)
             do {
                 try await fetchTopArtists(token: token)
@@ -789,6 +780,7 @@ struct ProfileView: View {
                 recentNeedsPermission = false
                 recentError = "Could not load recent music."
             }
+            await loadTopTracks(forceRefresh: true)
         } catch {
             if (error as? ASWebAuthenticationSessionError)?.code != .canceledLogin {
                 playlistError = "Could not connect to Spotify. Please try again."

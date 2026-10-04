@@ -251,12 +251,7 @@ struct MusicTabView: View {
                 savedTracksNeedPermission = false
                 return
             }
-            let token: String?
-            if let nativeToken = try await SpotifyAppAuthenticator.shared.accessToken() {
-                token = nativeToken
-            } else {
-                token = try await supabase.auth.session.providerToken
-            }
+            let token = try await SpotifyAccessService.shared.accessToken()
             guard let token else {
                 needsConnection = true
                 return
@@ -295,7 +290,7 @@ struct MusicTabView: View {
         isConnecting = true
         defer { isConnecting = false }
         do {
-            let token = try await SpotifyAppAuthenticator.shared.connect()
+            let token = try await SpotifyAccessService.shared.connect()
             await fetchMusic(token: token)
         } catch {
             if (error as? ASWebAuthenticationSessionError)?.code != .canceledLogin {
