@@ -292,9 +292,11 @@ struct MusicTabView: View {
         do {
             let token = try await SpotifyAccessService.shared.connect()
             await fetchMusic(token: token)
+            AppToastCenter.shared.show("Spotify is connected.", style: .success)
         } catch {
             if (error as? ASWebAuthenticationSessionError)?.code != .canceledLogin {
                 errorMessage = "Could not connect to Spotify. Please try again."
+                AppToastCenter.shared.show("Could not connect to Spotify.", style: .error)
             }
         }
     }

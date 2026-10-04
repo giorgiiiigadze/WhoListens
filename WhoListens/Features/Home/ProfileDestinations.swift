@@ -3,14 +3,7 @@ import SwiftUI
 
 struct AddFriendsView: View {
     var body: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "person.2.badge.plus").font(.system(size: 44, weight: .light))
-            Text("Add friends").font(.system(size: 28, weight: .bold, design: .rounded))
-            Text("Finding and adding friends is coming soon.").foregroundStyle(.white.opacity(0.62))
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity).padding(28)
-        .background(AppColors.background.ignoresSafeArea()).foregroundStyle(.white)
-        .navigationTitle("Friends").navigationBarTitleDisplayMode(.inline)
+        FriendsTabView(showNavigationBar: true)
     }
 }
 
@@ -29,7 +22,6 @@ struct ProfileSettingsView: View {
     private let page = Color(red: 31 / 255, green: 31 / 255, blue: 31 / 255)
     private let card = Color(white: 0.17)
     @State private var isRefreshingSpotify = false
-    @State private var spotifyMessage: String?
 
     var body: some View {
         ScrollView {
@@ -86,14 +78,6 @@ struct ProfileSettingsView: View {
         .navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .toolbarBackground(.automatic, for: .navigationBar)
-        .alert("Spotify", isPresented: Binding(
-            get: { spotifyMessage != nil },
-            set: { if !$0 { spotifyMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) { spotifyMessage = nil }
-        } message: {
-            Text(spotifyMessage ?? "")
-        }
     }
 
     private var appVersion: String {
@@ -106,9 +90,9 @@ struct ProfileSettingsView: View {
         defer { isRefreshingSpotify = false }
         do {
             _ = try await SpotifyAccessService.shared.connect()
-            spotifyMessage = "Spotify access is up to date."
+            AppToastCenter.shared.show("Spotify is connected.", style: .success)
         } catch {
-            spotifyMessage = "Couldn’t refresh Spotify access. Please try again."
+            AppToastCenter.shared.show("Couldn’t refresh Spotify access.", style: .error)
         }
     }
 
@@ -292,6 +276,10 @@ private struct EditProfileView: View {
         do {
             try await supabase.from("profiles").update(["display_name": name.trimmingCharacters(in: .whitespacesAndNewlines)]).eq("id", value: profile.id.uuidString).execute()
             await onProfileChanged(); dismiss()
-        } catch { saveError = "Couldn’t save your profile. Please try again." }
+            AppToastCenter.shared.show("Profile updated.", style: .success)
+        } catch {
+            saveError = "Couldn’t save your profile. Please try again."
+            AppToastCenter.shared.show("Couldn’t save your profile.", style: .error)
+        }
     }
 }

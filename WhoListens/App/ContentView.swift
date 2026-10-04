@@ -13,7 +13,7 @@ struct ContentView: View {
         Group {
             switch sessionState {
             case .loading:
-                AppColors.background.ignoresSafeArea()
+                Color.black.ignoresSafeArea()
                     .overlay { ProgressView().tint(.white) }
             case .signedIn:
                 SignedInOnboardingView()
@@ -22,6 +22,7 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .overlay(alignment: .top) { AppToastOverlay() }
         .task {
             for await (event, session) in supabase.auth.authStateChanges {
                 if event == .signedOut || event == .userDeleted {
@@ -81,7 +82,7 @@ private struct SignedInOnboardingView: View {
     private var onboardingContent: some View {
         switch destination {
         case .loading:
-            AppColors.background.ignoresSafeArea()
+            Color.black.ignoresSafeArea()
                 .overlay { ProgressView().tint(.white) }
         case .profileDetails:
             AgeConfirmationView(onFinished: { destination = .settingUp })

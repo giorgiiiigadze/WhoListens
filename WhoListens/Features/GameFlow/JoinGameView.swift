@@ -63,8 +63,10 @@ struct JoinGameView: View {
         do {
             joinedRoom = try await GameBackend.join(code: roomCode)
             lastRoomCode = joinedRoom?.code ?? ""
+            AppToastCenter.shared.show("Joined the party!", style: .success)
         } catch {
             errorMessage = error.localizedDescription
+            AppToastCenter.shared.show("Could not join the party. Check the PIN and try again.", style: .error)
         }
     }
 }

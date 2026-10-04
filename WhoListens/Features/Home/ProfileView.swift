@@ -37,6 +37,7 @@ struct ProfileView: View {
     @State private var recentNeedsPermission = false
     @State private var recentError: String?
     @State private var showsAllRecent = false
+    @State private var friendCount = 0
 
     init(
         profile: Profile,
@@ -112,6 +113,7 @@ struct ProfileView: View {
             Task { await updatePhoto(from: item) }
         }
         .task {
+            await loadFriendCount()
             await SpotifyProfilePreload.shared.preload(for: profile.id)
             await loadPlaylists()
             await loadRecentlyPlayed()
@@ -119,6 +121,7 @@ struct ProfileView: View {
             await loadTopTracks()
         }
         .refreshable {
+            await loadFriendCount()
             await loadRecentlyPlayed(forceRefresh: true)
             await loadTopArtists(forceRefresh: true)
             await loadTopTracks(forceRefresh: true)
@@ -442,11 +445,17 @@ struct ProfileView: View {
         HStack(spacing: 10) {
             Image(systemName: "person.2.fill")
                 .font(.system(size: 16))
-            Text("0 friends")
+            Text("\(friendCount) \(friendCount == 1 ? "friend" : "friends")")
                 .font(.system(size: 17, weight: .semibold))
         }
         .frame(maxWidth: .infinity)
         .frame(height: 46)
+    }
+
+    @MainActor
+    private func loadFriendCount() async {
+        guard let connections = try? await FriendsService.connections() else { return }
+        friendCount = connections.filter { $0.status == .accepted }.count
     }
 
     private var musicCard: some View {
@@ -781,9 +790,11 @@ struct ProfileView: View {
                 recentError = "Could not load recent music."
             }
             await loadTopTracks(forceRefresh: true)
+            AppToastCenter.shared.show("Spotify is connected.", style: .success)
         } catch {
             if (error as? ASWebAuthenticationSessionError)?.code != .canceledLogin {
                 playlistError = "Could not connect to Spotify. Please try again."
+                AppToastCenter.shared.show("Could not connect to Spotify.", style: .error)
                 if recentNeedsPermission {
                     recentError = "Spotify could not approve listening history. Try again."
                 }
@@ -809,6 +820,7 @@ struct ProfileView: View {
             try await onPhotoChanged()
             displayedImage = image
             photoError = nil
+            AppToastCenter.shared.show("Profile photo updated.", style: .success)
         } catch {
             photoError = error.localizedDescription
         }

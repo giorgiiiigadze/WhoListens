@@ -17,7 +17,7 @@ struct Profile: Decodable {
 }
 
 private enum MainTab: Hashable {
-    case home, play, music, profile
+    case home, friends, music, profile
 }
 
 struct HomeView: View {
@@ -73,10 +73,10 @@ struct HomeView: View {
             .tag(MainTab.home)
 
             NavigationStack {
-                PlayTabView()
+                FriendsTabView()
             }
-            .tabItem { Label("Play", systemImage: "gamecontroller.fill") }
-            .tag(MainTab.play)
+            .tabItem { Label("Friends", systemImage: "person.2.fill") }
+            .tag(MainTab.friends)
 
             NavigationStack {
                 MusicTabView()
@@ -139,7 +139,7 @@ struct HomeView: View {
                         Spacer(minLength: 24)
 
                         if !lastRoomCode.isEmpty {
-                            Button { selectedTab = .play } label: {
+                            Button { selectedTab = .friends } label: {
                                 HStack(spacing: 12) {
                                     Image(systemName: "arrow.uturn.backward.circle.fill")
                                         .foregroundStyle(AppColors.warmOrange)
@@ -412,8 +412,10 @@ struct HomeView: View {
             lastRoomCode = room.code
             partyError = nil
             activeRoom = room
+            AppToastCenter.shared.show("Party created. Share your PIN!", style: .success)
         } catch {
             partyError = "Could not create a party. Please try again."
+            AppToastCenter.shared.show("Could not create a party. Please try again.", style: .error)
         }
     }
 
