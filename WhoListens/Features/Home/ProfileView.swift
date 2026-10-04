@@ -82,7 +82,7 @@ struct ProfileView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 NavigationLink {
-                    AddFriendsView()
+                    AddFriendsView(displayName: profile.displayName, avatarImage: displayedImage)
                 } label: {
                     Image(systemName: "person.fill.badge.plus")
                 }
@@ -150,9 +150,9 @@ struct ProfileView: View {
                         }
                 } else {
                     Color(red: 0.10, green: 0.10, blue: 0.10)
-                    Image(systemName: "person.crop.circle.fill")
-                        .font(.system(size: 180, weight: .ultraLight))
-                        .foregroundStyle(.white.opacity(0.18))
+                    Text(AvatarInitials.forName(profile.displayName))
+                        .font(.system(size: 138, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.28))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
 
@@ -823,20 +823,6 @@ struct ProfileView: View {
             AppToastCenter.shared.show("Profile photo updated.", style: .success)
         } catch {
             photoError = error.localizedDescription
-        }
-    }
-}
-
-private extension View {
-    @ViewBuilder
-    func profileGlassCard(cornerRadius: CGFloat = 24) -> some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius)
-        if #available(iOS 26.0, *) {
-            self
-                .glassEffect(.regular, in: shape)
-        } else {
-            self
-                .background(.ultraThinMaterial, in: shape)
         }
     }
 }

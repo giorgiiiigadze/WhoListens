@@ -50,8 +50,12 @@ struct MonthYearPicker: UIViewRepresentable {
             pickerView.bounds.width / 2
         }
 
-        func pickerView(_ pickerView: UIPickerView, titleForRow row: Int, forComponent component: Int) -> String? {
-            component == 0 ? monthNames[row] : String(currentYear - row)
+        func pickerView(_ pickerView: UIPickerView, attributedTitleForRow row: Int, forComponent component: Int) -> NSAttributedString? {
+            let title = component == 0 ? monthNames[row] : String(currentYear - row)
+            return NSAttributedString(
+                string: title,
+                attributes: [.foregroundColor: UIColor.black]
+            )
         }
 
         func pickerView(_ pickerView: UIPickerView, didSelectRow row: Int, inComponent component: Int) {

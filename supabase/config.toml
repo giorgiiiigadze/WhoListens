@@ -1,0 +1,6 @@
+# Spotify's native SDK calls the token swap and refresh endpoints before a
+# WhoListens session exists. The function validates those OAuth credentials
+# itself (and validates a WhoListens bearer token for `/access`), so the
+# platform-level user-JWT gate must not reject the OAuth handshake first.
+[functions.spotify-auth]
+verify_jwt = false

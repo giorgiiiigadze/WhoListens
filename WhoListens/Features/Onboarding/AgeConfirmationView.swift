@@ -20,7 +20,12 @@ struct AgeConfirmationView: View {
     var body: some View {
         ZStack {
             if didContinue {
-                DisplayNameView(onBack: { didContinue = false }, onFinished: onFinished)
+                DisplayNameView(
+                    onBack: {
+                        didContinue = false
+                    },
+                    onFinished: onFinished
+                )
                     .transition(OnboardingMotion.transition(reduceMotion: reduceMotion))
             } else {
                 ageContent
@@ -55,19 +60,21 @@ struct AgeConfirmationView: View {
             } label: {
                 Text("Continue")
                     .font(AppTypography.body)
-                    .foregroundStyle(.black)
+                    .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, AppSpacing.medium)
-                    .background(.white, in: Capsule())
+                    .background(.black, in: Capsule())
             }
             .buttonStyle(.plain)
 
         }
-        .foregroundStyle(AppColors.text)
+        .foregroundStyle(.black)
         .padding(.horizontal, AppSpacing.xLarge)
         .padding(.bottom, AppSpacing.xLarge)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(AppColors.background.ignoresSafeArea())
+        .background(Color.white.ignoresSafeArea())
+        .preferredColorScheme(.light)
+        .tint(.black)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(onBack != nil)
@@ -75,7 +82,9 @@ struct AgeConfirmationView: View {
         .toolbar {
             if let onBack {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(action: onBack) {
+                    Button {
+                        onBack()
+                    } label: {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 17, weight: .semibold))
                     }

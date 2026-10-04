@@ -69,7 +69,7 @@ final class SpotifyAppAuthenticator {
 
     private func completeSignIn(accessToken: String) async throws {
         guard let refreshHandle = manager.session?.refreshToken, !refreshHandle.isEmpty else {
-            throw SpotifyAppAuthenticatorError.accountExchangeFailed
+            throw SpotifyAppAuthenticatorError.accountExchangeFailed()
         }
         var request = URLRequest(url: supabaseURL.appendingPathComponent("functions/v1/spotify-auth/exchange"))
         request.httpMethod = "POST"
@@ -77,8 +77,13 @@ final class SpotifyAppAuthenticator {
         request.setValue(supabasePublishableKey, forHTTPHeaderField: "apikey")
         request.httpBody = try JSONEncoder().encode(["access_token": accessToken, "refresh_handle": refreshHandle])
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let response = response as? HTTPURLResponse, response.statusCode == 200 else {
-            throw SpotifyAppAuthenticatorError.accountExchangeFailed
+        guard let response = response as? HTTPURLResponse else {
+            throw SpotifyAppAuthenticatorError.accountExchangeFailed()
+        }
+        guard response.statusCode == 200 else {
+            throw SpotifyAppAuthenticatorError.accountExchangeFailed(
+                message: Self.errorMessage(from: data)
+            )
         }
         let exchange = try JSONDecoder().decode(AccountExchange.self, from: data)
         _ = try await supabase.auth.verifyOTP(tokenHash: exchange.tokenHash, type: .magiclink)
@@ -160,6 +165,11 @@ final class SpotifyAppAuthenticator {
               let data = result as? Data else { return nil }
         return try? NSKeyedUnarchiver.unarchivedObject(ofClass: SPTSession.self, from: data)
     }
+
+    private static func errorMessage(from data: Data) -> String? {
+        struct ErrorResponse: Decodable { let error: String? }
+        return (try? JSONDecoder().decode(ErrorResponse.self, from: data))?.error
+    }
 }
 
 /// Spotify's Objective-C callbacks are not actor-isolated. This adapter keeps
@@ -206,7 +216,7 @@ private struct AccountExchange: Decodable {
 enum SpotifyAppAuthenticatorError: LocalizedError {
     case missingClientID
     case connectionInProgress
-    case accountExchangeFailed
+    case accountExchangeFailed(message: String? = nil)
 
     var errorDescription: String? {
         switch self {
@@ -214,8 +224,8 @@ enum SpotifyAppAuthenticatorError: LocalizedError {
             return "Spotify connection has not been configured yet."
         case .connectionInProgress:
             return "A Spotify connection is already in progress."
-        case .accountExchangeFailed:
-            return "Could not sign in to WhoListens with this Spotify account."
+        case .accountExchangeFailed(let message):
+            return message ?? "Could not sign in to WhoListens with this Spotify account."
         }
     }
 }

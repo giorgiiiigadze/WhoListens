@@ -2,8 +2,11 @@ import PhotosUI
 import SwiftUI
 
 struct AddFriendsView: View {
+    let displayName: String
+    let avatarImage: UIImage?
+
     var body: some View {
-        FriendsTabView(showNavigationBar: true)
+        FriendsTabView(displayName: displayName, avatarImage: avatarImage)
     }
 }
 
@@ -124,7 +127,7 @@ struct ProfileSettingsView: View {
     @ViewBuilder private func avatar(size: CGFloat) -> some View {
         Group {
             if let avatarImage { Image(uiImage: avatarImage).resizable().scaledToFill() }
-            else { Image(systemName: "person.fill").font(.system(size: size * 0.4)).frame(maxWidth: .infinity, maxHeight: .infinity).background(.white.opacity(0.12)) }
+            else { Text(AvatarInitials.forName(profile.displayName)).font(.system(size: size * 0.30, weight: .bold, design: .rounded)).frame(maxWidth: .infinity, maxHeight: .infinity).background(.white.opacity(0.12)) }
         }
         .frame(width: size, height: size).clipShape(Circle())
     }
@@ -242,7 +245,7 @@ private struct EditProfileView: View {
 
     @ViewBuilder private var avatar: some View {
         if let avatarImage { Image(uiImage: avatarImage).resizable().scaledToFill() }
-        else { Image(systemName: "person.fill").font(.system(size: 58)).frame(maxWidth: .infinity, maxHeight: .infinity).background(.white.opacity(0.12)) }
+        else { Text(AvatarInitials.forName(name.isEmpty ? profile.displayName : name)).font(.system(size: 54, weight: .bold, design: .rounded)).frame(maxWidth: .infinity, maxHeight: .infinity).background(.white.opacity(0.12)) }
     }
     private func field(
         _ title: String,

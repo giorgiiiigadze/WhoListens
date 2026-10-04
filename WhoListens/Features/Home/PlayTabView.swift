@@ -1,7 +1,8 @@
 import SwiftUI
 
 struct FriendsTabView: View {
-    var showNavigationBar = false
+    let displayName: String
+    let avatarImage: UIImage?
     private enum Section: String, CaseIterable {
         case suggestions = "Suggestions"
         case friends = "Friends"
@@ -10,9 +11,7 @@ struct FriendsTabView: View {
 
     @AppStorage("lastRoomCode") private var lastRoomCode = ""
     @State private var selectedSection: Section = .suggestions
-    @State private var showJoinGame = false
     @State private var activeRoom: GameRoom?
-    @State private var isCreatingRoom = false
     @State private var isResumingRoom = false
     @State private var errorMessage: String?
     @State private var searchText = ""
@@ -25,36 +24,8 @@ struct FriendsTabView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                Text("Friends")
-                    .font(AppTypography.display)
-                    .padding(.bottom, 7)
-
-                Text("Music is better together.")
-                    .font(.system(size: 15))
-                    .foregroundStyle(.white.opacity(0.62))
-                    .padding(.bottom, 26)
-
-                inviteCard
-                    .padding(.bottom, 29)
-
-                HStack(spacing: 11) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.white.opacity(0.55))
-                    TextField("Search friends by name", text: $searchText)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .font(.system(size: 16))
-                    if !searchText.isEmpty {
-                        Button { searchText = "" } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.white.opacity(0.45))
-                        }
-                    }
-                }
-                .padding(.horizontal, 16)
-                .frame(height: 50)
-                .background(Color(white: 0.14), in: RoundedRectangle(cornerRadius: 15))
-                .padding(.bottom, 28)
+                shareProfileCard
+                    .padding(.bottom, 20)
 
                 HStack(spacing: 0) {
                     ForEach(Section.allCases, id: \.self) { section in
@@ -137,65 +108,63 @@ struct FriendsTabView: View {
                 }
             }
             .padding(.horizontal, 22)
-            .padding(.top, 28)
+            .padding(.top, 8)
             .padding(.bottom, 40)
         }
         .background(Color.black.ignoresSafeArea())
         .foregroundStyle(.white)
-        .toolbar(showNavigationBar ? .visible : .hidden, for: .navigationBar)
+        .navigationTitle("Friends")
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search friends")
+        .textInputAutocapitalization(.never)
+        .autocorrectionDisabled()
         .task { await loadConnections() }
         .task(id: searchText) { await searchFriends() }
         .refreshable { await loadConnections() }
-        .navigationDestination(isPresented: $showJoinGame) { JoinGameView() }
         .navigationDestination(item: $activeRoom) { room in
             RoomSessionView(room: room)
                 .toolbar(.hidden, for: .tabBar)
         }
     }
 
-    private var inviteCard: some View {
-        VStack(alignment: .leading, spacing: 17) {
-            HStack(alignment: .top, spacing: 15) {
-                Image(systemName: "person.2.fill")
-                    .font(.system(size: 24, weight: .medium))
-                    .frame(width: 50, height: 50)
-                    .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 15))
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Bring your people in")
-                        .font(.system(size: 20, weight: .bold))
-                    Text("Start a music party, then share the PIN with your friends.")
-                        .font(.system(size: 14))
-                        .foregroundStyle(.white.opacity(0.67))
-                        .fixedSize(horizontal: false, vertical: true)
+    private var shareProfileCard: some View {
+        HStack(spacing: 11) {
+            Group {
+                if let avatarImage {
+                    Image(uiImage: avatarImage)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    Text(AvatarInitials.forName(displayName))
+                        .font(.system(size: 19, weight: .bold, design: .rounded))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(AppColors.electricPurple)
                 }
             }
+            .frame(width: 42, height: 42)
+            .clipShape(Circle())
 
-            HStack(spacing: 10) {
-                Button { Task { await createRoom() } } label: {
-                    Group {
-                        if isCreatingRoom { ProgressView().tint(.black) }
-                        else { Text("Create party") }
-                    }
-                    .font(AppTypography.body)
-                    .foregroundStyle(.black)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 48)
-                    .background(.white, in: RoundedRectangle(cornerRadius: 13))
-                }
-                .disabled(isCreatingRoom)
-
-                Button { showJoinGame = true } label: {
-                    Text("Join with PIN")
-                        .font(.system(size: 15, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
-                        .background(.white.opacity(0.13), in: RoundedRectangle(cornerRadius: 13))
-                }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Share your profile")
+                    .font(.system(size: 17, weight: .semibold))
+                Text(displayName.isEmpty ? "Let friends find you" : displayName)
+                    .font(.system(size: 14))
+                    .foregroundStyle(.white.opacity(0.60))
+                    .lineLimit(1)
             }
-            .buttonStyle(.plain)
+            Spacer(minLength: 8)
+            ShareLink(item: "Find me on WhoListens: \(displayName). Open Friends and search my name to send a request.") {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(width: 44, height: 44)
+                    .background(.white.opacity(0.13), in: Circle())
+            }
+            .accessibilityLabel("Share your profile name")
+            .disabled(displayName.isEmpty)
         }
-        .padding(19)
-        .background(Color(white: 0.12), in: RoundedRectangle(cornerRadius: 21))
+        .padding(.horizontal, 14)
+        .frame(minHeight: 72)
+        .profileGlassCard(cornerRadius: 16)
     }
 
     private var emptyState: some View {
@@ -246,10 +215,10 @@ struct FriendsTabView: View {
     }
 
     private func avatar(_ user: FriendUser) -> some View {
-        Text(String(user.displayName.prefix(1)).uppercased())
+        Text(AvatarInitials.forName(user.displayName))
             .font(.system(size: 19, weight: .bold, design: .rounded))
             .frame(width: 49, height: 49)
-            .background(Color(white: 0.20), in: Circle())
+            .background(AppColors.electricPurple, in: Circle())
     }
 
     private func friendRow(_ user: FriendUser) -> some View {
@@ -380,23 +349,6 @@ struct FriendsTabView: View {
             AppToastCenter.shared.show(message, style: .success)
         } catch {
             AppToastCenter.shared.show(error.localizedDescription, style: .error)
-        }
-    }
-
-    @MainActor
-    private func createRoom() async {
-        guard !isCreatingRoom else { return }
-        isCreatingRoom = true
-        defer { isCreatingRoom = false }
-        do {
-            let room = try await GameBackend.create()
-            lastRoomCode = room.code
-            activeRoom = room
-            errorMessage = nil
-            AppToastCenter.shared.show("Party created. Share your PIN!", style: .success)
-        } catch {
-            errorMessage = "Could not create a party. Please try again."
-            AppToastCenter.shared.show("Could not create a party. Please try again.", style: .error)
         }
     }
 

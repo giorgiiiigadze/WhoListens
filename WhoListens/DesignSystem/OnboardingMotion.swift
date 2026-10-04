@@ -1,11 +1,11 @@
 import SwiftUI
 
 enum OnboardingMotion {
-    static func transition(reduceMotion: Bool) -> AnyTransition {
-        reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.985))
+    static func transition(reduceMotion: Bool, forward _: Bool = true) -> AnyTransition {
+        .opacity
     }
 
     static func animation(reduceMotion: Bool) -> Animation {
-        reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.4)
+        reduceMotion ? .easeInOut(duration: 0.2) : .easeInOut(duration: 0.36)
     }
 }

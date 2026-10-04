@@ -73,7 +73,7 @@ struct HomeView: View {
             .tag(MainTab.home)
 
             NavigationStack {
-                FriendsTabView()
+                FriendsTabView(displayName: profile?.displayName ?? "", avatarImage: avatarImage)
             }
             .tabItem { Label("Friends", systemImage: "person.2.fill") }
             .tag(MainTab.friends)
@@ -112,6 +112,12 @@ struct HomeView: View {
             guard selectedTab == .home, let profile else { return }
             await SpotifyProfilePreload.shared.preload(for: profile.id)
             albumArtworkURLs = Self.albumCovers(for: profile.id)
+        }
+        .task(id: profile?.id) {
+            guard let profile, avatarImage == nil else { return }
+            let fallback = await SpotifyProfileImageService.image(for: profile.id)
+            guard self.profile?.id == profile.id, avatarImage == nil else { return }
+            avatarImage = fallback
         }
     }
 
@@ -250,8 +256,8 @@ struct HomeView: View {
                     if let avatarImage {
                         Image(uiImage: avatarImage).resizable().scaledToFill()
                     } else {
-                        Image(systemName: "person.fill")
-                            .font(.system(size: 18))
+                        Text(AvatarInitials.forName(profile?.displayName ?? ""))
+                            .font(.system(size: 16, weight: .bold, design: .rounded))
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .background(AppColors.electricPurple)
                     }
@@ -271,7 +277,7 @@ struct HomeView: View {
                 if let avatarImage {
                     Image(uiImage: avatarImage).resizable().scaledToFill()
                 } else {
-                    Text(String(profile.displayName.prefix(1)).uppercased())
+                    Text(AvatarInitials.forName(profile.displayName))
                         .font(.system(size: 42, weight: .bold, design: .rounded))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(AppColors.electricPurple.opacity(0.55))
@@ -448,6 +454,13 @@ struct HomeView: View {
             } else {
                 avatarImage = nil
             }
+            if avatarImage == nil {
+                Task {
+                    let fallback = await SpotifyProfileImageService.image(for: loaded.id)
+                    guard self.profile?.id == loaded.id, avatarImage == nil else { return }
+                    avatarImage = fallback
+                }
+            }
             isLoadingPhoto = false
         } catch {
             profileError = "We couldn't load your profile."
@@ -486,6 +499,7 @@ struct HomeView: View {
         isSigningOut = true
         SpotifyAppAuthenticator.shared.clearSession()
         SpotifyAccessService.shared.clear()
+        SpotifyProfileImageService.clear()
         SpotifyProfilePreload.shared.clear()
         PendingProfilePhoto.clear()
         try? await supabase.auth.signOut(scope: .local)

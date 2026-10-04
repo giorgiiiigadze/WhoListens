@@ -2,7 +2,10 @@ import SwiftUI
 
 struct SettingUpView: View {
     let onComplete: () async throws -> Void
-    @State private var errorMessage: String?
+    let onStartOver: () async -> Void
+    @State private var showsRecoveryAction = false
+    @State private var accountNeedsSignIn = false
+    @State private var isStartingOver = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -23,14 +26,19 @@ struct SettingUpView: View {
                         .foregroundStyle(.secondary)
                 }
                 .multilineTextAlignment(.center)
-                if let errorMessage {
-                    Text(errorMessage)
-                        .font(.subheadline)
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.center)
-                        .padding(.top, 16)
-                    Button("Try again") { Task { await finishSetup() } }
+                if showsRecoveryAction {
+                    Button(accountNeedsSignIn ? "Sign in again" : "Try again") {
+                        Task {
+                            if accountNeedsSignIn {
+                                isStartingOver = true
+                                await onStartOver()
+                            } else {
+                                await finishSetup()
+                            }
+                        }
+                    }
                         .buttonStyle(PrimaryActionStyle())
+                        .disabled(isStartingOver)
                         .padding(.top, 12)
                 }
             }
@@ -46,11 +54,17 @@ struct SettingUpView: View {
 
     @MainActor
     private func finishSetup() async {
-        errorMessage = nil
+        showsRecoveryAction = false
+        accountNeedsSignIn = false
         do {
             try await onComplete()
+        } catch is OnboardingAccountError {
+            accountNeedsSignIn = true
+            showsRecoveryAction = true
+            AppToastCenter.shared.show("Your account no longer exists. Sign in again.", style: .error)
         } catch {
-            errorMessage = "We couldn't finish setting up your profile. Please try again."
+            showsRecoveryAction = true
+            AppToastCenter.shared.show("We couldn't finish setup. Please try again.", style: .error)
         }
     }
 }

@@ -71,7 +71,11 @@ private struct SignedInOnboardingView: View {
                 )
             } else {
                 NavigationStack {
-                    onboardingContent
+                    ZStack {
+                        onboardingContent
+                            .transition(.opacity)
+                    }
+                    .animation(.easeInOut(duration: 0.25), value: destination)
                 }
             }
         }
@@ -87,7 +91,7 @@ private struct SignedInOnboardingView: View {
         case .profileDetails:
             AgeConfirmationView(onFinished: { destination = .settingUp })
         case .settingUp:
-            SettingUpView(onComplete: saveProfile)
+            SettingUpView(onComplete: saveProfile, onStartOver: resetDeletedAccount)
         case .home:
             EmptyView()
         case .failed:
@@ -105,6 +109,12 @@ private struct SignedInOnboardingView: View {
         destination = .loading
         do {
             let session = try await supabase.auth.session
+            // A session cached on the device can survive deletion of its Auth
+            // user. Validate it against Auth before using it to load a profile.
+            guard let user = try? await supabase.auth.user() else {
+                throw OnboardingAccountError()
+            }
+            guard user.id == session.user.id else { throw OnboardingAccountError() }
             let existing: Profile? = try await supabase.from("profiles")
                 .select("id, display_name, birth_month, birth_year, avatar_path")
                 .eq("id", value: session.user.id.uuidString)
@@ -126,7 +136,11 @@ private struct SignedInOnboardingView: View {
                 destination = .profileDetails
             }
         } catch {
-            destination = .failed
+            if error is OnboardingAccountError {
+                await resetDeletedAccount()
+            } else {
+                destination = .failed
+            }
         }
     }
 
@@ -137,6 +151,10 @@ private struct SignedInOnboardingView: View {
             throw CocoaError(.fileReadCorruptFile)
         }
         let session = try await supabase.auth.session
+        guard let user = try? await supabase.auth.user() else {
+            throw OnboardingAccountError()
+        }
+        guard user.id == session.user.id else { throw OnboardingAccountError() }
         var profile: Profile = try await supabase.from("profiles")
             .upsert(OnboardingProfile(
                 id: session.user.id,
@@ -171,7 +189,18 @@ private struct SignedInOnboardingView: View {
         homeProfile = profile
         destination = .home
     }
+
+    @MainActor
+    private func resetDeletedAccount() async {
+        savedName = ""
+        pendingBirthMonth = 0
+        pendingBirthYear = 0
+        SpotifyAppAuthenticator.shared.clearSession()
+        try? await supabase.auth.signOut(scope: .local)
+    }
 }
+
+struct OnboardingAccountError: Error {}
 
 private struct OnboardingProfile: Encodable {
     let id: UUID

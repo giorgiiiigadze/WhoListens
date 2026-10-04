@@ -9,6 +9,8 @@ struct ProfilePhotoView: View {
     @State private var photoData: Data?
     @State private var isLoadingPhoto = false
     @State private var photoError: String?
+    @State private var spotifyImage: UIImage?
+    @AppStorage("displayName") private var displayName = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -17,9 +19,9 @@ struct ProfilePhotoView: View {
                 .multilineTextAlignment(.center)
                 .padding(.top, AppSpacing.large)
 
-            Text("Help friends find you.")
+            Text("Your Spotify photo or initials will show if you skip.")
                 .font(.system(size: 16))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.black.opacity(0.60))
                 .padding(.top, AppSpacing.small)
 
             Spacer()
@@ -27,7 +29,7 @@ struct ProfilePhotoView: View {
             VStack(spacing: AppSpacing.large) {
                 ZStack {
                     Circle()
-                        .fill(Color(.secondarySystemBackground))
+                        .fill(Color(white: 0.92))
 
                     if let photoData, let image = UIImage(data: photoData) {
                         Image(uiImage: image)
@@ -35,15 +37,22 @@ struct ProfilePhotoView: View {
                             .scaledToFill()
                             .frame(width: 196, height: 196)
                             .clipShape(Circle())
+                    } else if let spotifyImage {
+                        Image(uiImage: spotifyImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 196, height: 196)
+                            .clipShape(Circle())
                     } else {
-                        Image(systemName: "person.fill")
-                            .font(.system(size: 78, weight: .ultraLight))
-                            .foregroundStyle(Color.white.opacity(0.28))
+                        Text(AvatarInitials.forName(displayName))
+                            .font(.system(size: 70, weight: .bold, design: .rounded))
+                            .foregroundStyle(.black.opacity(0.75))
                     }
                 }
                 .frame(width: 196, height: 196)
                 .overlay { Circle().strokeBorder(Color.black.opacity(0.08)) }
-                .accessibilityLabel(photoData == nil ? "No profile photo selected" : "Selected profile photo")
+                .accessibilityLabel(photoData != nil ? "Selected profile photo" :
+                    spotifyImage != nil ? "Spotify profile photo" : "Profile initials")
 
                 PhotosPicker(selection: $selectedItem, matching: .images) {
                     HStack(spacing: AppSpacing.small) {
@@ -71,7 +80,7 @@ struct ProfilePhotoView: View {
                         selectedItem = nil
                     }
                     .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.black.opacity(0.60))
                 }
 
                 if let photoError {
@@ -87,17 +96,21 @@ struct ProfilePhotoView: View {
             Button(action: onContinue) {
                 Text(photoData == nil ? "Skip for now" : "Continue")
                     .font(AppTypography.body)
+                    .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, AppSpacing.medium)
             }
-            .buttonStyle(PrimaryActionStyle())
+            .buttonStyle(.plain)
+            .background(.black, in: Capsule())
             .disabled(isLoadingPhoto)
         }
-        .foregroundStyle(AppColors.text)
+        .foregroundStyle(.black)
         .padding(.horizontal, AppSpacing.xLarge)
         .padding(.bottom, AppSpacing.xLarge)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(AppColors.background.ignoresSafeArea())
+        .background(Color.white.ignoresSafeArea())
+        .preferredColorScheme(.light)
+        .tint(.black)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden()
@@ -112,6 +125,10 @@ struct ProfilePhotoView: View {
             }
         }
         .onAppear { photoData = PendingProfilePhoto.load() }
+        .task {
+            guard let userID = try? await supabase.auth.session.user.id else { return }
+            spotifyImage = await SpotifyProfileImageService.image(for: userID)
+        }
         .onChange(of: selectedItem) { _, item in
             guard let item else { return }
             Task { await loadPhoto(from: item) }

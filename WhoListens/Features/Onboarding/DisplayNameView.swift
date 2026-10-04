@@ -17,13 +17,15 @@ struct DisplayNameView: View {
         ZStack {
             if showPhoto {
                 ProfilePhotoView(
-                    onBack: { showPhoto = false },
+                    onBack: {
+                        showPhoto = false
+                    },
                     onContinue: onFinished
                 )
                 .transition(OnboardingMotion.transition(reduceMotion: reduceMotion))
             } else {
                 nameContent
-                    .transition(OnboardingMotion.transition(reduceMotion: reduceMotion))
+                .transition(OnboardingMotion.transition(reduceMotion: reduceMotion))
             }
         }
         .animation(OnboardingMotion.animation(reduceMotion: reduceMotion), value: showPhoto)
@@ -33,6 +35,7 @@ struct DisplayNameView: View {
         VStack(spacing: 0) {
             Text("What should friends call you")
                 .font(AppTypography.title)
+                .foregroundStyle(.black)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, AppSpacing.large)
@@ -42,7 +45,7 @@ struct DisplayNameView: View {
             HStack(spacing: AppSpacing.xSmall) {
                 Text("@")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(AppColors.text)
+                    .foregroundStyle(.black)
                     .accessibilityHidden(true)
 
                 TextField("Your name", text: $name)
@@ -51,6 +54,8 @@ struct DisplayNameView: View {
                     .autocorrectionDisabled()
                     .submitLabel(.done)
                     .focused($nameIsFocused)
+                    .foregroundStyle(.black)
+                    .tint(.black)
                     .accessibilityLabel("Username")
                     .onChange(of: name) { _, newValue in
                         if newValue.count > 20 {
@@ -60,23 +65,32 @@ struct DisplayNameView: View {
                     .onSubmit(continueToAuth)
             }
             .padding(AppSpacing.medium)
-            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: AppCornerRadius.medium))
+            .background(Color(white: 0.985), in: RoundedRectangle(cornerRadius: AppCornerRadius.medium))
+            .overlay {
+                RoundedRectangle(cornerRadius: AppCornerRadius.medium)
+                    .strokeBorder(.black.opacity(0.10))
+            }
+            .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
 
             Spacer()
 
             Button(action: continueToAuth) {
                 Text("Continue")
                     .font(AppTypography.body)
+                    .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, AppSpacing.medium)
             }
-            .buttonStyle(PrimaryActionStyle())
+            .buttonStyle(.plain)
+            .background(.black, in: Capsule())
             .disabled(trimmedName.isEmpty)
         }
         .padding(.horizontal, AppSpacing.xLarge)
         .padding(.bottom, AppSpacing.xLarge)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(AppColors.background.ignoresSafeArea())
+        .background(Color.white.ignoresSafeArea())
+        .preferredColorScheme(.light)
+        .tint(.black)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(onBack != nil)
